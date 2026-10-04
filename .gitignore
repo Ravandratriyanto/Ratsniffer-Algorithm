@@ -1,0 +1,5 @@
+# Claude working notes — private context, not for the repo
+CLAUDE.md
+
+# Claude Code session logs (keep transcripts out of git)
+.claude/

@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ratsniffer — How It All Fits Together</title>
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --ink:#e6e9ef; --dim:#8b93a3;
+          --blue:#58a6ff; --red:#e5534b; --amber:#d29922; --green:#3fb950; --purple:#a371f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.65 ui-sans-serif,system-ui,"Segoe UI",sans-serif; }
+  header { padding:26px 32px 10px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--dim); max-width:760px; }
+  main { padding:8px 32px 60px; max-width:1180px; margin:0 auto; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin:18px 0 10px; overflow-x:auto; }
+  svg.map { width:100%; height:auto; min-width:980px; display:block; }
+  .legend { display:flex; gap:18px; flex-wrap:wrap; color:var(--dim); font-size:13px; margin:2px 2px 24px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .dot { width:11px; height:11px; border-radius:3px; display:inline-block; }
+  h2 { font-size:17px; margin:34px 0 2px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; margin-top:16px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-left-width:3px; border-radius:10px; padding:14px 18px; }
+  .card h3 { margin:0 0 6px; font-size:15px; }
+  .card .files { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; color:var(--dim); margin-bottom:10px; }
+  .card p { margin:8px 0; font-size:14px; }
+  a.card { text-decoration:none; color:inherit; }
+  .b { border-left-color:var(--blue); } .r { border-left-color:var(--red); }
+  .a { border-left-color:var(--amber); } .g { border-left-color:var(--green); } .p { border-left-color:var(--purple); }
+  footer { color:var(--dim); font-size:13px; padding:0 32px 40px; max-width:1180px; margin:0 auto; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:#cfe3ff; }
+  mjx-container { color:#cfe3ff; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ratsniffer — how the pieces fit</h1>
+  <div class="sub">A pretend blockchain that watches public money and tries to tell honest spending from theft.
+  The map shows every file and how information flows. Under it, each stage is explained in plain words —
+  with the actual math written out. Click any box to jump to its card.</div>
+</header>
+
+<main>
+<div class="board">
+<svg class="map" viewBox="0 0 1120 560" role="img" aria-label="Ratsniffer architecture diagram">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b93a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#d29922" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arP" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#a371f7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="28"  y="64"  width="188" height="150" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <text x="36" y="56" fill="#8b93a3" font-size="12">① make the world</text>
+  <rect x="238" y="64"  width="182" height="150" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <text x="246" y="56" fill="#8b93a3" font-size="12">② record it</text>
+  <rect x="640" y="60"  width="214" height="260" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <text x="648" y="52" fill="#8b93a3" font-size="12">③ catch the cheats</text>
+  <rect x="40"  y="356" width="612" height="156" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <text x="48" y="348" fill="#8b93a3" font-size="12">⑤ the cheating bot (self-play)</text>
+
+  <line x1="216" y1="118" x2="236" y2="118" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#ar)"/>
+  <path d="M420 118 L450 128" fill="none" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#ar)"/>
+  <path d="M604 132 L638 150" fill="none" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="854" y1="166" x2="896" y2="188" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#ar)"/>
+  <line x1="214" y1="406" x2="234" y2="406" stroke="#a371f7" stroke-width="1.5" marker-end="url(#arP)"/>
+  <line x1="390" y1="406" x2="410" y2="404" stroke="#a371f7" stroke-width="1.5" marker-end="url(#arP)"/>
+  <path d="M500 370 V322 H20 V140 H26" fill="none" stroke="#a371f7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arP)"/>
+  <text x="206" y="314" fill="#a371f7" font-size="11.5">new fake schemes feed the world</text>
+  <path d="M986 220 V336 H650 V214 H658" fill="none" stroke="#d29922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arA)"/>
+  <text x="712" y="330" fill="#d29922" font-size="11.5">learning loop · misses → retrain</text>
+
+  <a href="#c-world">
+    <rect x="44" y="92" width="160" height="46" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="54" y="114" fill="#e6e9ef" font-size="13" font-weight="600">sandbox.html</text>
+    <text x="54" y="130" fill="#8b93a3" font-size="11">makes the world (JS)</text>
+  </a>
+  <a href="#c-world">
+    <rect x="44" y="150" width="160" height="46" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="54" y="172" fill="#e6e9ef" font-size="13" font-weight="600">world.py</text>
+    <text x="54" y="188" fill="#8b93a3" font-size="11">same, in Python</text>
+  </a>
+
+  <a href="#c-ingest">
+    <rect x="250" y="92" width="158" height="46" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="114" fill="#e6e9ef" font-size="13" font-weight="600">ingest.py</text>
+    <text x="260" y="130" fill="#8b93a3" font-size="11">reads the world</text>
+  </a>
+  <a href="#c-chain">
+    <rect x="250" y="150" width="158" height="44" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="171" fill="#e6e9ef" font-size="13" font-weight="600">chain.py</text>
+    <text x="260" y="186" fill="#8b93a3" font-size="11">tamper-proof record</text>
+  </a>
+
+  <rect x="450" y="106" width="152" height="50" rx="25" fill="#171a21" stroke="#2a2f3a"/>
+  <text x="526" y="128" fill="#e6e9ef" font-size="12.5" text-anchor="middle">what we can see</text>
+  <text x="526" y="144" fill="#8b93a3" font-size="11" text-anchor="middle">+ the secret answer key</text>
+
+  <a href="#c-gates">
+    <rect x="654" y="70" width="186" height="40" rx="7" fill="#171a21" stroke="#e5534b"/>
+    <text x="664" y="90" fill="#e6e9ef" font-size="13" font-weight="600">gates.py</text>
+    <text x="664" y="103" fill="#8b93a3" font-size="11">simple rules</text>
+  </a>
+  <a href="#c-analyzer">
+    <rect x="654" y="118" width="186" height="40" rx="7" fill="#171a21" stroke="#e5534b"/>
+    <text x="664" y="138" fill="#e6e9ef" font-size="13" font-weight="600">analyzer.py</text>
+    <text x="664" y="151" fill="#8b93a3" font-size="11">who sticks out</text>
+  </a>
+  <a href="#c-laundering">
+    <rect x="654" y="166" width="186" height="40" rx="7" fill="#171a21" stroke="#e5534b"/>
+    <text x="664" y="186" fill="#e6e9ef" font-size="13" font-weight="600">laundering.py</text>
+    <text x="664" y="199" fill="#8b93a3" font-size="11">follows the money</text>
+  </a>
+  <a href="#c-ml">
+    <rect x="654" y="214" width="186" height="40" rx="7" fill="#171a21" stroke="#d29922"/>
+    <text x="664" y="234" fill="#e6e9ef" font-size="13" font-weight="600">features.py · ml.py</text>
+    <text x="664" y="247" fill="#8b93a3" font-size="11">learns from examples</text>
+  </a>
+  <a href="#c-oracle">
+    <rect x="654" y="262" width="186" height="40" rx="7" fill="#171a21" stroke="#3fb950"/>
+    <text x="664" y="282" fill="#e6e9ef" font-size="13" font-weight="600">oracle.py</text>
+    <text x="664" y="295" fill="#8b93a3" font-size="11">checks real life</text>
+  </a>
+
+  <a href="#c-score">
+    <rect x="898" y="156" width="192" height="64" rx="8" fill="#171a21" stroke="#58a6ff"/>
+    <text x="908" y="182" fill="#e6e9ef" font-size="13" font-weight="600">④ sniff.py</text>
+    <text x="908" y="200" fill="#8b93a3" font-size="11">the verdict + report card</text>
+    <text x="908" y="214" fill="#8b93a3" font-size="11">precision / recall</text>
+  </a>
+
+  <a href="#c-adv">
+    <rect x="60" y="384" width="152" height="44" rx="7" fill="#171a21" stroke="#a371f7"/>
+    <text x="70" y="405" fill="#e6e9ef" font-size="13" font-weight="600">schemes.py</text>
+    <text x="70" y="420" fill="#8b93a3" font-size="11">real-case starter set</text>
+  </a>
+  <a href="#c-adv">
+    <rect x="236" y="384" width="152" height="44" rx="7" fill="#171a21" stroke="#a371f7"/>
+    <text x="246" y="405" fill="#e6e9ef" font-size="13" font-weight="600">breed.py</text>
+    <text x="246" y="420" fill="#8b93a3" font-size="11">mix + mutate</text>
+  </a>
+  <a href="#c-adv">
+    <rect x="412" y="372" width="170" height="68" rx="8" fill="#171a21" stroke="#a371f7"/>
+    <text x="422" y="398" fill="#e6e9ef" font-size="13" font-weight="600">arena.py</text>
+    <text x="422" y="416" fill="#8b93a3" font-size="11">cheat vs. catch,</text>
+    <text x="422" y="430" fill="#8b93a3" font-size="11">over and over</text>
+  </a>
+</svg>
+</div>
+
+<div class="legend">
+  <span><i class="dot" style="background:#58a6ff"></i> the pipeline</span>
+  <span><i class="dot" style="background:#e5534b"></i> rule checkers</span>
+  <span><i class="dot" style="background:#d29922"></i> learning</span>
+  <span><i class="dot" style="background:#3fb950"></i> real-life check</span>
+  <span><i class="dot" style="background:#a371f7"></i> cheating bot</span>
+</div>
+
+<h2>The math, in plain English</h2>
+<p class="sub">Each box is one small idea. Here's the idea, then the formula.</p>
+
+<div class="grid">
+
+  <a class="card b" id="c-world" href="#c-world">
+    <h3>① Making the world</h3>
+    <div class="files">sandbox.html · world.py</div>
+    <p>Picture the budget as water poured into the top of a pipe network shaped like a family tree. Each box passes most of it down, keeps a little, and a <em>corrupt</em> box secretly siphons some off. Nothing just disappears — every dollar is accounted for:</p>
+    \[ \text{in} \;=\; \text{stolen} + \text{kept} + \text{sent down} + \text{delivered} + \text{kicked back} \]
+    <p>A "kickback" sends money back <em>up</em> to whoever helped, making a loop. We just follow the looped money around and around. Each lap it gets smaller, so it dies out fast — same reason this never-ending sum still adds up to a normal number:</p>
+    \[ 1 + \tfrac12 + \tfrac14 + \tfrac18 + \cdots \;=\; 2 \]
+  </a>
+
+  <a class="card b" id="c-chain" href="#c-chain">
+    <h3>② A record you can't fake</h3>
+    <div class="files">chain.py</div>
+    <p>Every page of the ledger gets a wax seal made from <em>everything on the page</em> plus <em>the seal of the page before it</em>:</p>
+    \[ \text{seal}_n \;=\; H\big(\text{page}_n,\ \text{seal}_{n-1}\big) \]
+    <p>Change one number and its seal changes, which breaks the next page's seal, and the next… Crack one and they all crack. So nobody can quietly rewrite the past. \(H\) is a "fingerprint" function that's practically impossible to fake.</p>
+  </a>
+
+  <a class="card b" id="c-ingest" href="#c-ingest">
+    <h3>Seeing vs. knowing</h3>
+    <div class="files">ingest.py</div>
+    <p>We split the world in two: what an outsider could <em>see</em> (the public money trail) and the secret <em>answer key</em> (who was actually corrupt).</p>
+    <p>The detector is only allowed to read the public part. We keep the answer key hidden and use it afterward to grade it — like marking a test without letting the student peek at the answers.</p>
+  </a>
+
+  <a class="card r" id="c-gates" href="#c-gates">
+    <h3>③a Simple rules</h3>
+    <div class="files">gates.py</div>
+    <p>Quick yes/no checks on each payment. Was the price way above normal? Did money rush out the moment it came in? Did it go to the boss's cousin?</p>
+    \[ \text{price} \;>\; \text{normal price} \;\;\Rightarrow\;\; \text{flag it} \]
+    <p>If a rule breaks, that's not a guess — it's a receipt. The whole idea: <em>cheating always breaks some rule.</em></p>
+  </a>
+
+  <a class="card r" id="c-analyzer" href="#c-analyzer">
+    <h3>③b Who sticks out</h3>
+    <div class="files">analyzer.py</div>
+    <p>Compare each office to its neighbours. If everyone keeps about 5% but one keeps 33%, that one stands out. We measure "how much it stands out" so a couple of oddballs can't fool us:</p>
+    \[ z \;=\; \frac{x - \text{typical}}{\text{typical wobble}} \]
+    <p>Big \(z\) = suspicious. The catch: if <em>everybody</em> is crooked, then "typical" is crooked too, and nobody looks odd. That blind spot is exactly what the next box fixes.</p>
+  </a>
+
+  <a class="card r" id="c-laundering" href="#c-laundering">
+    <h3>③b⁺ Following the money</h3>
+    <div class="files">laundering.py</div>
+    <p>Draw every payment as an arrow between offices — a <em>graph</em>. Two laundering tricks show up as shapes in that graph.</p>
+    <p><strong>Round-trip:</strong> money leaves an office and finds its way <em>back</em> to it — a loop. We hunt for cycles:</p>
+    \[ A \to B \to \cdots \to A \]
+    <p><strong>Layering:</strong> a long chain of shells that each instantly forward ~everything and keep nothing — pure relays stacked to blur the origin. We flag the chain.</p>
+  </a>
+
+  <a class="card a" id="c-ml" href="#c-ml">
+    <h3>③c Learning from examples</h3>
+    <div class="files">features.py · ml.py</div>
+    <p>Show the computer thousands of solved cases and let it find the pattern. It turns each office into a list of numbers \(x\), then outputs a <em>chance</em> it's corrupt:</p>
+    \[ P(\text{corrupt}) \;=\; \frac{1}{1 + e^{-(w\cdot x \,+\, b)}} \]
+    <p>That \(\frac{1}{1+e^{-t}}\) is just a smooth "S" curve that squeezes any score into a 0–100% chance. For tricks it has never seen, it also asks "how weird is this versus honest offices?" and flags the far-out ones.</p>
+  </a>
+
+  <a class="card g" id="c-oracle" href="#c-oracle">
+    <h3>③d Checking real life</h3>
+    <div class="files">oracle.py</div>
+    <p>Some theft looks perfectly fine on paper. So you send a real inspector: was the school actually built? Does the cash add up? The lie shows up as a <em>gap</em>:</p>
+    \[ \text{gap} \;=\; (\text{what's really there}) - (\text{what the books explain}) \]
+    <p>Inspectors cost money, so you can't check everyone — you spend them on the biggest cases that look fishy but aren't proven yet.</p>
+    <p>The same inspector also catches <strong>phantom goods</strong> (paid for, never delivered) and the <strong>fake investor</strong> — "investment returns" that really trace back to a connected party or are impossibly high.</p>
+  </a>
+
+  <a class="card b" id="c-score" href="#c-score">
+    <h3>④ The report card</h3>
+    <div class="files">sniff.py</div>
+    <p>Two scores. <strong>Precision</strong>: when it yells "corrupt!", how often is it right (don't accuse the innocent). <strong>Recall</strong>: out of all the real crooks, how many did it catch.</p>
+    \[ \text{precision} = \frac{\text{crooks caught}}{\text{total accusations}}, \qquad \text{recall} = \frac{\text{crooks caught}}{\text{total crooks}} \]
+    <p>The goal of the whole project is to push both of these toward 100%.</p>
+  </a>
+
+  <a class="card p" id="c-adv" href="#c-adv">
+    <h3>⑤ The cheating bot</h3>
+    <div class="files">schemes.py · breed.py · arena.py</div>
+    <p>A bot invents fake corruption to try to slip past the detector. It keeps the schemes that got away, <em>mixes and tweaks</em> them (like breeding animals for a trait), and tries again — slowly evolving toward the detector's weak spots.</p>
+    <p>So the detector and the bot are rivals in a tug-of-war:</p>
+    \[ \min_{\text{detector}}\ \ \max_{\text{cheater}}\ \ (\text{crooks missed}) \]
+    <p>One side tries to miss as few crooks as possible; the other tries to hide as many as possible. Fighting makes both of them sharper.</p>
+  </a>
+
+</div>
+
+<h2>The laundering playbook — and the tell each trick leaves</h2>
+<p class="sub">Real money laundering runs in three stages: <strong>placement</strong> (get dirty money in), <strong>layering</strong> (hide the trail), <strong>integration</strong> (bring it back looking clean). Every trick has to break some invariant the detector watches — that's how we catch tricks nobody hand-coded a rule for.</p>
+
+<div class="grid">
+
+  <a class="card r" id="t-roundtrip" href="#t-roundtrip">
+    <h3>Round-trip / kickback <span style="color:#8b93a3;font-weight:400">· layering</span></h3>
+    <p>Money leaves an office dressed as a "contract" or "loan", bounces through a company, and lands <em>back</em> with whoever sent it. The disguise changes; the destination doesn't.</p>
+    <p><strong>Tell:</strong> a loop in the payment graph — the money returns to its source.</p>
+    \[ A \to B \to A \]
+    <p class="files">caught by: laundering.round_trip</p>
+  </a>
+
+  <a class="card r" id="t-layering" href="#t-layering">
+    <h3>Layering chains <span style="color:#8b93a3;font-weight:400">· layering</span></h3>
+    <p>Push the money through a line of shell companies that do nothing real — each just takes it in and passes ~all of it straight on. Every extra hop makes the origin harder to see.</p>
+    <p><strong>Tell:</strong> a chain of pure pass-throughs that keep nothing.</p>
+    \[ \frac{\text{paid out}}{\text{taken in}} \;\approx\; 1 \quad (\text{keeps} \approx 0) \]
+    <p class="files">caught by: laundering.layering</p>
+  </a>
+
+  <a class="card r" id="t-structuring" href="#t-structuring">
+    <h3>Structuring / smurfing <span style="color:#8b93a3;font-weight:400">· placement</span></h3>
+    <p>Banks must report any transfer over a threshold. So chop one big suspicious transfer into many small ones, each just under the line, so none gets reported.</p>
+    <p><strong>Tell:</strong> a pile of payments clustered just below the reporting threshold.</p>
+    \[ \$1\text{M} \;\longrightarrow\; 12 \times \$90\text{k}\ \ (<\$100\text{k each}) \]
+    <p class="files">caught by: gates.structuring</p>
+  </a>
+
+  <a class="card r" id="t-trade" href="#t-trade">
+    <h3>Trade mis-invoicing <span style="color:#8b93a3;font-weight:400">· layering</span></h3>
+    <p>Move value across a deal by lying about the price: <em>over</em>-invoice (pay a friend too much), <em>under</em>-invoice (sell them something too cheap), or bill for goods that don't exist.</p>
+    <p><strong>Tell:</strong> a price outside the fair band, or an audit finds the goods missing.</p>
+    \[ \text{price} \notin [\,\text{lo},\,\text{hi}\,] \quad\text{or}\quad \text{goods}_{\text{real}} < \text{goods}_{\text{billed}} \]
+    <p class="files">caught by: gates.price_band (two-sided) · oracle phantom goods</p>
+  </a>
+
+  <a class="card g" id="t-integration" href="#t-integration">
+    <h3>Integration — the clean cover <span style="color:#8b93a3;font-weight:400">· integration</span></h3>
+    <p>Bring the money back as "clean" — fake business revenue, or "investment returns". A real investor's money has a traceable, independent, market-rate source; a launderer's doesn't.</p>
+    <p><strong>Tell:</strong> income from a connected party, or returns too high to be real. An honest investor is cleared.</p>
+    \[ \text{return} > \text{market}\ \ \text{or}\ \ \text{source} \rightsquigarrow \text{self} \]
+    <p class="files">caught by: oracle.wealth_reconciliation</p>
+  </a>
+
+</div>
+</main>
+
+<footer>
+  The story in one line: <code>sandbox.html / world.py</code> make a world →
+  <code>ingest.py</code> + <code>chain.py</code> record it →
+  <code>gates · analyzer · ml · oracle</code> judge it →
+  <code>sniff.py</code> grades the result →
+  the <code>cheating bot</code> invents harder worlds and feeds its wins back so the detector keeps learning.
+  Open with <code>xdg-open flowcharts.html</code> (needs internet once, to load the math font).
+</footer>
+</body>
+</html>

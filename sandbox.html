@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fiscal Flow Sandbox</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#2a2f3a; --ink:#e6e9ef; --dim:#8b93a3; --accent:#58a6ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.5 ui-sans-serif,system-ui,"Segoe UI",sans-serif; -webkit-user-select:none; user-select:none; }
+  header { padding:12px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  button.hdr { width:auto; margin:0; white-space:nowrap; }
+  #fx { pointer-events:none; }
+  h1 { font-size:16px; margin:0 0 2px; font-weight:600; }
+  .sub { color:var(--dim); font-size:12px; }
+  #wrap { display:flex; height:calc(100vh - 120px); }
+  #chartbox { flex:1; overflow:hidden; padding:0; touch-action:none; }
+  #chartbox.panning { cursor:grabbing; }
+  aside { width:340px; border-left:1px solid var(--line); padding:14px; overflow:auto; background:var(--panel); }
+  footer { border-top:1px solid var(--line); padding:10px 18px; display:flex; gap:24px; flex-wrap:wrap; font-variant-numeric:tabular-nums; }
+  .stat b { display:block; font-size:17px; }
+  .stat span { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+  label { display:block; margin:12px 0 2px; font-size:12px; color:var(--dim); }
+  input[type=range] { width:100%; }
+  input[type=text], input[type=number], select { width:100%; background:#0f1115; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+  label.check { display:flex; align-items:center; gap:8px; margin:8px 0; cursor:pointer; color:var(--ink); }
+  label.check input { width:auto; margin:0; }
+  label.check.off { color:var(--dim); cursor:not-allowed; }
+  button.danger { border-color:#5c2b28; color:#e5534b; }
+  button.danger:hover { border-color:#e5534b; }
+  button { background:#21262d; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:7px 11px; cursor:pointer; font:inherit; margin-top:14px; width:100%; }
+  button:hover { border-color:var(--accent); }
+  .node { cursor:grab; }
+  .node.drag { cursor:grabbing; }
+  .qadd { cursor:pointer; opacity:.4; transition:opacity .12s; }
+  .qadd:hover { opacity:1; }
+  .qadd text { pointer-events:none; }
+  .node text { pointer-events:none; font-size:11px; }
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:4px; }
+  td { padding:4px 0; border-bottom:1px solid var(--line); }
+  td:last-child { text-align:right; font-variant-numeric:tabular-nums; color:var(--accent); }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); margin:18px 0 4px; font-weight:600; }
+  .tag { color:#e5534b; }
+  .warn { color:#e5534b; font-size:12px; margin-top:6px; }
+  @keyframes born { from { opacity:0 } to { opacity:1 } }
+  .node.born { animation: born .5s ease both; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Fiscal Flow Sandbox</h1>
+    <div class="sub">Middle-drag to pan, wheel to zoom. Drag boxes to rearrange, click one to edit it, <b>+</b> to add a unit under it. Dark red nodes indicate higher effective capture/skim; dashed red arrows are private kickback flows.</div>
+  </div>
+  <div style="display:flex; gap:10px; align-items:center">
+    <label class="check" style="margin:0; font-size:12px"><input type="checkbox" id="schemeLoop"> continuous</label>
+    <button id="scheme" class="hdr">✦ Scheme</button>
+    <button id="play" class="hdr">▶ Play flow</button>
+  </div>
+</header>
+
+<div id="wrap">
+  <div id="chartbox"></div>
+  <aside id="panel"></aside>
+</div>
+
+<footer id="stats"></footer>
+
+<script>
+
+const MODEL = {
+  appropriation: 1e12,
+  nodes: [
+    {id:'budget', name:'National Budget',       parent:null,    share:1,  capture:.004, retain:.01, audit:.40},
+    {id:'edu',    name:'Ministry of Education', parent:'budget', share:.5, capture:.02,  retain:.05, audit:.35},
+    {id:'hlth',   name:'Ministry of Health',    parent:'budget', share:.5, capture:.02,  retain:.05, audit:.35},
+    {id:'pvN',    name:'North Province',        parent:'edu',    share:1,  capture:.03,  retain:.08, audit:.30},
+    {id:'pvS',    name:'South Region',          parent:'hlth',   share:1,  capture:.03,  retain:.08, audit:.30},
+    {id:'sch',    name:'Public School',         parent:'pvN',    share:1,  capture:.02,  retain:0,   audit:.30, frontline:true},
+    {id:'cl',     name:'Public Clinic',         parent:'pvS',    share:1,  capture:.02,  retain:0,   audit:.30, frontline:true}
+  ]
+};
+
+let index, kids, root, selected = 'edu';
+
+// `manual` holds boxes you dragged. Anything absent from it falls back
+// to the automatic tree layout, so dragging one node doesn't freeze the
+// rest. `POS` is where every box actually sits after that merge — the
+// pointer handlers read it to know what you grabbed.
+const manual = new Map();
+let POS = new Map();
+let drag = null;
+
+// Free camera. The chart no longer scrolls; everything is drawn inside one
+// <g> carrying this transform, and screen coordinates are converted back
+// through it. Middle-drag pans, wheel zooms about the cursor.
+let view = {x:0, y:0, k:1};
+let pan = null;
+let justBorn = null, schemeRunning = false, schemeStop = false, onPourDone = null, schemePlan = [], schemeBuilt = false;
+
+function buildIndex(){
+  // Normalise the legacy single `kickback` into the general `transfers` list so
+  // the rest of the code deals with exactly one outgoing-money mechanism.
+  for (const n of MODEL.nodes){
+    if (n.kickback){
+      (n.transfers || (n.transfers = [])).push({to:n.kickback.to, rate:n.kickback.rate, kickback:true});
+      delete n.kickback;
+    }
+  }
+  index = new Map(MODEL.nodes.map(n => [n.id, n]));
+  kids  = new Map(MODEL.nodes.map(n => [n.id, []]));
+  for (const n of MODEL.nodes){
+    if (n.parent === null) root = n;
+    else kids.get(n.parent).push(n);
+  }
+}
+
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+// `skim` is the flat capture rate; `infl` converts an invoice markup into
+// the equivalent share of the (now-inflated) payment that's pure padding.
+// The two combine (without double-counting) into one effective capture
+// rate, and audit suppresses both alike — better oversight catches
+// padded invoices as well as bare skimming.
+function rates(n, clean){
+  if (clean) return {c:0, r: clamp(n.retain||0, 0, 1)};
+  const skim = n.capture||0;
+  const infl = (n.markup||0) / (1 + (n.markup||0));
+  const raw  = skim + infl - skim*infl;
+  const c = clamp(raw * (1 - (n.audit||0)), 0, 1);
+  const r = clamp(n.retain||0, 0, 1 - c);
+  return {c, r, skim, infl};
+}
+
+const shareTotal = ch => ch.reduce((a,k) => a + k.share, 0) || 1;
+
+// Every outgoing money route from a node, unified. A transfer sends a share of
+// the node's *diverted* (skimmed) funds into another node — the same mechanic as
+// a kickback — so both travel one code path from here down. Chain transfers to
+// build arbitrary corruption loops (A skims and pays B, B pays C, C pays A back).
+function outflows(n){
+  return (n.transfers || []).filter(t => t.rate > 0 && index.has(t.to));
+}
+
+// Single top-down pass: standard tree flow, no kickback re-injection yet.
+function baseFlow(n, received, S, clean){
+  const {c, r} = rates(n, clean);
+  const ch = kids.get(n.id);
+  const diverted = received * c;
+  let retained = 0, down = 0, delivered = 0, trueDelivered = 0;
+  if (n.frontline){
+    delivered = received - diverted;                 // what the paperwork reports
+    trueDelivered = (!clean && n.ghost) ? delivered * 0.05 : delivered; // what's actually real
+  } else if (!ch.length){
+    retained = received - diverted;
+  } else {
+    retained = received * r;
+    down = received - diverted - retained;
+  }
+  // kickedOut: money booked as diverted here that was then handed to another
+  // node. It keeps the row identity honest —
+  //   received = diverted + retained + down + delivered + kickedOut
+  // — without being counted again in the totals, since the recipient books it.
+  // fromParent / fromKickback split `received` by which door the money came
+  // in: down the funding line, or sideways through a kickback. An edge label
+  // or a flow animation wants fromParent, never received.
+  // fromKickbackDirect is the slice of fromKickback handed straight over by a
+  // kickback rule, as opposed to cascading down from this node's own parent.
+  // The two arrive on different clocks, which the pour animation has to honour.
+  S.set(n.id, {received, diverted, retained, down, delivered, trueDelivered,
+               kickedOut: 0, fromParent: received, fromKickback: 0, fromKickbackDirect: 0});
+  const tot = shareTotal(ch);
+  for (const k of ch) baseFlow(k, down * k.share / tot, S, clean);
+}
+
+// Second pass: route a node's kickback into its target as a fresh inflow,
+// let it cascade through that target's own subtree, and let it kick back
+// again if the target itself has a kickback rule — this is what actually
+// produces a circular flow instead of a tree. Amounts shrink geometrically
+// each hop (same "fee decay" idea as real layering), so this always
+// terminates; the depth/size cutoffs are just a safety net.
+// Returns how much was actually absorbed. The caller writes off only that
+// much, so money refused by the recursion guard is never lost from the books.
+function injectFlow(nodeId, amount, S, clean, depth){
+  const n = index.get(nodeId);
+  if (!n || depth > 8 || amount < MODEL.appropriation * 1e-9) return 0;
+  const {c, r} = rates(n, clean);
+  const ch = kids.get(nodeId);
+  const diverted = amount * c;
+  let retained = 0, down = 0, delivered = 0, trueDelivered = 0;
+  if (n.frontline){
+    delivered = amount - diverted;
+    trueDelivered = (!clean && n.ghost) ? delivered * 0.05 : delivered;
+  } else if (!ch.length){
+    retained = amount - diverted;
+  } else {
+    retained = amount * r;
+    down = amount - diverted - retained;
+  }
+  const s = S.get(nodeId);
+  s.received += amount; s.diverted += diverted; s.retained += retained;
+  s.down += down; s.delivered += delivered; s.trueDelivered += trueDelivered;
+  // Injected money is the side door — for the node the kickback aims at, and
+  // for everything downstream that the re-injection cascades through.
+  s.fromKickback += amount;
+
+  const tot = shareTotal(ch);
+  let passed = 0;
+  for (const k of ch) passed += injectFlow(k.id, down * k.share / tot, S, clean, depth+1);
+  const stuck = down - passed;                 // a hop the guard refused
+  if (stuck > 0){ s.retained += stuck; s.down -= stuck; }
+
+  if (!clean){
+    // A transfer moves money already booked as diverted here. Move only what
+    // genuinely left (clamped to what's still diverted), or the recipient counts
+    // the same money twice.
+    for (const t of outflows(n)){
+      const seed = Math.min(diverted * t.rate, Math.max(0, s.diverted));
+      if (seed <= 0) continue;
+      const out = injectFlow(t.to, seed, S, clean, depth+1);
+      s.diverted -= out; s.kickedOut += out;
+      S.get(t.to).fromKickbackDirect += out;
+    }
+  }
+  return amount;
+}
+
+function simulate(clean){
+  const S = new Map();
+  baseFlow(root, MODEL.appropriation, S, clean);
+  if (!clean){
+    // Snapshot the seeds first: injections mutate `diverted`, so reading it
+    // inside the loop would fire a second transfer on money already moved.
+    const seeds = [];
+    for (const n of MODEL.nodes)
+      for (const t of outflows(n))
+        seeds.push({n, to:t.to, amount: S.get(n.id).diverted * t.rate});
+    for (const {n, to, amount} of seeds){
+      const s = S.get(n.id);
+      const seed = Math.min(amount, Math.max(0, s.diverted));
+      if (seed <= 0) continue;
+      const out = injectFlow(to, seed, S, clean, 1);
+      s.diverted -= out; s.kickedOut += out;
+      S.get(to).fromKickbackDirect += out;
+    }
+  }
+  return S;
+}
+
+// Kickback loops feed money back upstream, so delivery stopped being a simple
+// multilinear function of the rates and the old closed form — exact on a pure
+// tree — drifted up to 22% off. Central differences cost two simulations per
+// derivative, microseconds at this size, and can't fall out of step with the
+// model again.
+const H = 1e-5;
+
+// The objective is *true* delivery, not reported. Oversight that only defends
+// the paperwork of a ghost recipient buys nothing real, and the ranking should
+// say so.
+function trueFrontline(){
+  const S = simulate(false);
+  let f = 0;
+  for (const n of MODEL.nodes) f += S.get(n.id).trueDelivered;
+  return f;
+}
+
+function ddx(n, key){
+  const had = key in n, v0 = n[key] || 0;
+  const hi = Math.min(v0 + H, 1), lo = Math.max(v0 - H, 0);
+  n[key] = hi; const up = trueFrontline();
+  n[key] = lo; const dn = trueFrontline();
+  if (had) n[key] = v0; else delete n[key];
+  return hi > lo ? (up - dn) / (hi - lo) : 0;
+}
+
+function sensitivity(){
+  return MODEL.nodes.map(n => ({
+    n,
+    dCapture: ddx(n, 'capture'),
+    dAudit:   ddx(n, 'audit')
+  })).sort((a, b) => b.dAudit - a.dAudit);
+}
+
+const COLW = 205, ROWH = 58, NW = 165, NH = 42;
+
+function layout(){
+  const pos = new Map();
+  let leaf = 0, maxDepth = 0;
+  (function walk(n, d){
+    maxDepth = Math.max(maxDepth, d);
+    const ch = kids.get(n.id);
+    let row;
+    if (!ch.length) row = leaf++;
+    else { const ys = ch.map(k => walk(k, d+1)); row = (ys[0] + ys[ys.length-1]) / 2; }
+    pos.set(n.id, {d, row});
+    return row;
+  })(root, 0);
+  return {pos, rows: leaf, maxDepth};
+}
+
+// Auto layout merged with your drags, plus a canvas big enough that a
+// box dragged past the old edge stays reachable by scrolling.
+function computePositions(){
+  const {pos, rows, maxDepth} = layout();
+  POS = new Map();
+  for (const n of MODEL.nodes){
+    const m = manual.get(n.id), p = pos.get(n.id);
+    // depth rides along on the position: it's what staggers the flow animation
+    POS.set(n.id, m ? {x:m.x, y:m.y, d:p.d} : {x: 20 + p.d*COLW, y: 25 + p.row*ROWH, d:p.d});
+  }
+  let W = 40 + (maxDepth+1)*COLW, H = 50 + rows*ROWH;
+  for (const p of POS.values()){
+    W = Math.max(W, p.x + NW + 40);
+    H = Math.max(H, p.y + NH + 40);
+  }
+  return {W, H};
+}
+
+function fmt(v){
+  if (v >= 1e12) return (v/1e12).toFixed(2) + 'T';
+  if (v >= 1e9) return (v/1e9).toFixed(2) + 'B';
+  if (v >= 1e6) return (v/1e6).toFixed(1) + 'M';
+  if (v >= 1e3) return (v/1e3).toFixed(0) + 'K';
+  return v.toFixed(0);
+}
+
+// quotes included: node names now flow into value="..." attributes
+const esc = s => String(s).replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+// Green while a node's balance is climbing, red while it drains, grey at rest.
+function flowColour(id){
+  const a = animAt && animAt.get(id);
+  if (!a) return '#9aa4b5';
+  if (a.inR > 0 && a.inR < 1) return '#3fb950';
+  if (a.selfR > 0 && a.selfR < 1) return '#e5534b';
+  return '#9aa4b5';
+}
+
+function heat(c){
+  const t = Math.min(c / 0.22, 1);
+  const mix = (a,b) => Math.round(a + (b-a)*t);
+  return `rgb(${mix(24,124)},${mix(58,32)},${mix(42,38)})`;
+}
+
+// Size of the drawing surface. The SVG now fills the pane rather than the
+// content, since panning replaced scrolling.
+function viewportSize(){
+  const r = chartbox.getBoundingClientRect();
+  return {w: Math.max(1, Math.round(r.width)), h: Math.max(1, Math.round(r.height))};
+}
+
+// Centre the whole model in the pane at a scale that fits.
+function fixtures(){
+  if (!POS.size) return [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity;
+  for (const p of POS.values()){ minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x + NW); }
+  const y = minY - 86, w = 150, h = 44;
+  const bankX = Math.max(minX + w + 60, maxX - w);
+  return [
+    {id:'__exch', name:'Stock Exchange', sub:'honest returns', x:minX, y, w, h, col:'#3fb950', fill:'#15241b', role:'market'},
+    {id:'__bank', name:'Bank',           sub:'cash-out / off-ramp', x:bankX, y, w, h, col:'#58a6ff', fill:'#15202e', role:'bank'},
+  ];
+}
+
+function contentBounds(){
+  computePositions();
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of POS.values()){
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x + NW); maxY = Math.max(maxY, p.y + NH);
+  }
+  for (const f of fixtures()){
+    minX = Math.min(minX, f.x); minY = Math.min(minY, f.y);
+    maxX = Math.max(maxX, f.x + f.w); maxY = Math.max(maxY, f.y + f.h);
+  }
+  return {minX, minY, maxX, maxY};
+}
+
+function fitView(){
+  const b = contentBounds();
+  const vp = viewportSize();
+  const cw = b.maxX - b.minX, ch = b.maxY - b.minY;
+  const k = Math.min(1, vp.w / (cw + 80), vp.h / (ch + 80));
+  view = {k, x: (vp.w - cw*k)/2 - b.minX*k, y: (vp.h - ch*k)/2 - b.minY*k};
+}
+
+function drawChart(S){
+  computePositions();
+  const vp = viewportSize();
+  let svg = `<svg width="${vp.w}" height="${vp.h}"><defs>
+    <marker id="kb" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#e5534b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="incG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#3fb950" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="incR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#e5534b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker></defs><g transform="translate(${view.x},${view.y}) scale(${view.k})">`;
+
+  for (const n of MODEL.nodes){
+    if (!n.parent) continue;
+    const a = POS.get(n.parent), b = POS.get(n.id);
+    const x1 = a.x + NW, y1 = a.y + NH/2;
+    const x2 = b.x,      y2 = b.y + NH/2;
+    const mx = (x1 + x2) / 2;
+    const w = 1 + 9 * Math.sqrt(inflow(n.id, S.get(n.id).received) / MODEL.appropriation);
+    // id so the flow animation can walk this exact curve with getPointAtLength
+    svg += `<path id="edge-${n.id}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none"
+            stroke="#3d4757" stroke-width="${w.toFixed(2)}" stroke-linecap="round"/>`;
+  }
+
+  // Private transfer / kickback flows — drawn separately so the circular pattern
+  // is visually distinct from the legitimate downward budget tree.
+  for (const n of MODEL.nodes){
+    for (const t of outflows(n)){
+      const a = POS.get(n.id), b = POS.get(t.to);
+      if (!a || !b) continue;
+      const x1 = a.x + NW/2, y1 = a.y;
+      const x2 = b.x + NW/2, y2 = b.y + NH;
+      const my = Math.min(y1, y2) - 36;
+      svg += `<path d="M${x1},${y1} Q${(x1+x2)/2},${my} ${x2},${y2}" fill="none"
+              stroke="#e5534b" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#kb)">
+              <title>Transfer: ${(t.rate*100).toFixed(0)}% of ${esc(n.name)}'s diverted funds \u2192 ${esc(index.get(t.to).name)}</title></path>`;
+    }
+  }
+
+  const FIX = fixtures(), exch = FIX[0], bank = FIX[1];
+  for (const f of FIX){
+    svg += `<rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" rx="7" fill="${f.fill}" stroke="${f.col}" stroke-width="1.5">
+              <title>${f.role === 'market' ? 'Legitimate market \u2014 where honest investment returns come from' : 'Bank \u2014 on/off-ramp to cash; where the on-chain trail can go dark'}</title></rect>
+      <text x="${f.x+11}" y="${f.y+19}" fill="#e6e9ef" font-size="12" font-weight="600">${esc(f.name)}</text>
+      <text x="${f.x+11}" y="${f.y+34}" fill="${f.col}" font-size="10">${esc(f.sub)}</text>`;
+  }
+
+  for (const n of MODEL.nodes){
+    const p = POS.get(n.id), nx = p.x + NW/2, ny = p.y;
+    let di = 0;
+    (n.externalIncome || []).forEach((t) => {
+      const dirty = t.linked || (t.return || 0) > 0.25;
+      if (!dirty && exch){
+        const ex = exch.x + exch.w/2, ey = exch.y + exch.h;
+        svg += `<path d="M${ex},${ey} C${ex},${(ey+ny)/2} ${nx},${(ey+ny)/2} ${nx},${ny}" fill="none"
+                stroke="#3fb950" stroke-width="1.5" marker-end="url(#incG)">
+                <title>${esc(t.source || 'market')} \u00b7 ${((t.return||0)*100).toFixed(0)}% return (clean, via Stock Exchange)</title></path>`;
+      } else {
+        const iw = 122, ih = 34, i = di++;
+        const bx = p.x + (NW - iw)/2 + i*16, by = p.y - 50 - i*48, cx = bx + iw/2;
+        const raw = t.source || 'Shell source';
+        const name = raw.length > 17 ? raw.slice(0, 16) + '\u2026' : raw;
+        svg += `<path d="M${cx},${by+ih} L${nx},${ny}" fill="none" stroke="#e5534b" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#incR)"/>
+          <rect x="${bx}" y="${by}" width="${iw}" height="${ih}" rx="6" fill="#241619" stroke="#e5534b" stroke-dasharray="3 2">
+            <title>external income \u2014 suspicious (connected party or impossible return)</title></rect>
+          <text x="${bx+9}" y="${by+15}" fill="#e6e9ef" font-size="11">${esc(name)}</text>
+          <text x="${bx+9}" y="${by+28}" fill="#e5534b" font-size="10">${((t.return||0)*100).toFixed(0)}% \u00b7 ${fmt(t.amount||0)}</text>`;
+      }
+    });
+  }
+
+  if (bank) for (const n of MODEL.nodes){
+    if (!n.frontline) continue;
+    const p = POS.get(n.id);
+    const sx = p.x + NW, sy = p.y + NH/2, tx = bank.x + bank.w/2, ty = bank.y + bank.h;
+    svg += `<path d="M${sx},${sy} C${(sx+tx)/2},${sy} ${tx},${(sy+ty)/2} ${tx},${ty}" fill="none"
+            stroke="#3d4757" stroke-width="1.2" stroke-dasharray="2 3">
+            <title>${esc(n.name)} cashes out through the bank \u2014 the on-chain trail ends here</title></path>`;
+  }
+
+  for (const n of MODEL.nodes){
+    const p = POS.get(n.id), s = S.get(n.id), {c} = rates(n);
+    const on = n.id === selected, moving = drag && drag.id === n.id;
+
+    // One badge per scheme attached to this node, so you can read the whole
+    // model off the chart without clicking through every box.
+    const marks = [];
+    const outs = outflows(n);
+    if (outs.length)
+      marks.push(['\u21a9', '#e5534b', 'sends to ' + outs.map(t => index.get(t.to).name).join(', ')]);
+    if (n.ghost)  marks.push(['\u25cc', '#d29922', 'ghost recipient \u2014 reports more than it delivers']);
+    if (n.markup > 0) marks.push(['\u2191', '#d29922', 'over-invoiced ' + (n.markup*100).toFixed(0) + '%']);
+    else if (n.markup < 0) marks.push(['\u2193', '#58a6ff', 'under-invoiced ' + (-n.markup*100).toFixed(0) + '%']);
+    if (n.phantom) marks.push(['\u2205', '#d29922', 'phantom goods ' + (n.phantom*100).toFixed(0) + '%']);
+    if ((n.transfers||[]).some(t => (t.chunks||1) >= 5)) marks.push(['\u2261', '#d29922', 'structured payments (smurfing)']);
+    if (n.externalIncome && n.externalIncome.length){
+      const bad = n.externalIncome.some(t => t.linked || (t.return||0) > 0.25);
+      marks.push(['$', bad ? '#e5534b' : '#3fb950', 'external income' + (bad ? ' \u2014 suspicious' : ' \u2014 looks clean')]);
+    }
+
+    // Trim the name so a badge never sits on top of it.
+    const avail = NW - 18 - marks.length * 17;
+    const label = n.name.length * 6.2 > avail
+      ? n.name.slice(0, Math.max(3, Math.floor(avail / 6.2) - 1)) + '\u2026'
+      : n.name;
+
+    svg += `<g class="node${moving ? ' drag' : ''}${n.id === justBorn ? ' born' : ''}" data-id="${n.id}">
+      <rect x="${p.x}" y="${p.y}" width="${NW}" height="${NH}" rx="6" fill="${heat(c)}"
+            stroke="${on ? '#58a6ff' : '#2a2f3a'}" stroke-width="${on ? 2 : 1}"/>
+      <text x="${p.x+9}" y="${p.y+17}" fill="#e6e9ef">${esc(label)}</text>
+      <text x="${p.x+9}" y="${p.y+32}" fill="${flowColour(n.id)}">${fmt(balOf(n.id) ?? s.received)} \u00b7 skim ${(c*100).toFixed(1)}%</text>
+      ${marks.map(([g, col, tip], i) => {
+        const bx = p.x + NW - 13 - i*17, by = p.y + 14;
+        // title on the circle, not the text: .node text is pointer-events:none,
+        // so a tooltip hung off the glyph would never fire
+        return `<circle cx="${bx}" cy="${by}" r="7.5" fill="#0f1115" stroke="${col}"><title>${esc(tip)}</title></circle>
+          <text x="${bx}" y="${by+3.5}" fill="${col}" font-size="9" text-anchor="middle">${g}</text>`;
+      }).join('')}
+      <title>${esc(n.name)}</title>
+    </g>`;
+
+    // Quick-add shortcut. Kept outside the .node group so grabbing it starts
+    // a click, not a drag.
+    const qx = p.x + NW + 13, qy = p.y + NH - 7;
+    svg += `<g class="qadd" data-add="${n.id}">
+      <circle cx="${qx}" cy="${qy}" r="9" fill="#21262d" stroke="#3d4757"/>
+      <text x="${qx}" y="${qy+4.5}" fill="#8b93a3" font-size="14" text-anchor="middle">+</text>
+      <title>Add a unit funded by ${esc(n.name)}</title></g>`;
+  }
+  // Empty layer the animation writes into. It lives inside the camera group,
+  // so tokens pan and zoom with everything else and need no transform of
+  // their own. drawChart recreates it empty; the next frame refills it.
+  document.getElementById('chartbox').innerHTML = svg + '<g id="fx"></g></g></svg>';
+}
+
+function drawStats(S){
+  const C = simulate(true);
+  let delivered = 0, clean = 0, diverted = 0, trueDelivered = 0;
+  for (const n of MODEL.nodes){
+    // every figure runs through the same fill fraction, so the footer counts
+    // up in step with the chart rather than jumping to the final answer
+    delivered += shown(n.id, S.get(n.id).delivered);
+    clean     += shown(n.id, C.get(n.id).delivered);
+    diverted  += shown(n.id, S.get(n.id).diverted);
+    trueDelivered += shown(n.id, S.get(n.id).trueDelivered);
+  }
+  const approp = MODEL.appropriation;
+  const rising = animAt ? ' style="color:#3fb950"' : '';
+
+  // What the nodes hold right now; the rest is mid-hop on an edge. Zero at
+  // both ends of the pour. It can dip a fraction of a percent negative around
+  // the deep kickback hops: the loop revisits nodes at several recursion
+  // levels, but the clock has one window per tree depth, so a cyclic flow has
+  // no single arrival time. Clamped for display; bounded by a test.
+  let held = 0;
+  if (animAt) for (const n of MODEL.nodes) held += animAt.get(n.id).bal;
+  const transit = animAt ? Math.max(0, approp - held) : 0;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><span>Appropriated</span><b>${fmt(approp)}</b></div>
+    ${animAt ? `<div class="stat"><span>In transit</span><b style="color:#d29922">${fmt(transit)}</b></div>` : ''}
+    <div class="stat"><span>Reported frontline</span><b${rising}>${fmt(delivered)}</b></div>
+    <div class="stat"><span>True frontline</span><b${rising}>${fmt(trueDelivered)}</b></div>
+    <div class="stat"><span>Reporting gap</span><b${rising}>${fmt(delivered - trueDelivered)}</b></div>
+    <div class="stat"><span>Diverted</span><b${rising}>${fmt(diverted)}</b></div>
+    <div class="stat"><span>Leakage</span><b>${(100*diverted/approp).toFixed(1)}%</b></div>
+    <div class="stat"><span>PETS ratio</span><b>${clean > 0 ? (100*delivered/clean).toFixed(1) : '0.0'}%</b></div>`;
+}
+
+const flowRows = s => `
+  <tr><td>received</td><td>${fmt(s.received)}</td></tr>
+  ${s.fromKickback ? `<tr><td>· from parent</td><td>${fmt(s.fromParent)}</td></tr>
+  <tr><td>· from kickback</td><td>${fmt(s.fromKickback)}</td></tr>` : ''}
+  <tr><td>diverted</td><td>${fmt(s.diverted)}</td></tr>
+  ${s.kickedOut ? `<tr><td>kicked out</td><td>${fmt(s.kickedOut)}</td></tr>` : ''}
+  <tr><td>passed down</td><td>${fmt(s.down)}</td></tr>
+  ${s.delivered ? `<tr><td>reported delivered</td><td>${fmt(s.delivered)}</td></tr>
+  <tr><td>true delivered</td><td>${fmt(s.trueDelivered)}</td></tr>` : ''}`;
+
+const levRows = S => sensitivity().slice(0, 5).map(r =>
+  `<tr><td>${esc(r.n.name)}</td><td>+${fmt(r.dAudit/100)}</td></tr>`).join('');
+
+// ---- structural editing -------------------------------------------------
+
+let uid = 0;
+const newId = () => { let id; do { id = 'n' + (++uid); } while (index.has(id)); return id; };
+
+// A frontline node never computes `down`, so anything hung underneath one
+// would silently receive nothing. Giving it a child therefore demotes it
+// from frontline rather than leaving a subtree quietly starved.
+function addChild(parentId){
+  stopFlow();                    // edges are about to change under the tokens
+  const p = index.get(parentId);
+  if (p.frontline){ delete p.frontline; delete p.ghost; p.retain = .10; }
+  const id = newId();
+  MODEL.nodes.push({id, name:'New Unit', parent:parentId, share:.5,
+                    capture:.05, retain:.10, audit:.20});
+  buildIndex();
+  selected = id;
+  refresh();
+}
+
+function removeSubtree(id){
+  stopFlow();
+  const doomed = new Set();
+  (function walk(x){ doomed.add(x); for (const k of kids.get(x)) walk(k.id); })(id);
+  const parent = index.get(id).parent;
+  MODEL.nodes = MODEL.nodes.filter(n => !doomed.has(n.id));
+  // a transfer aimed into the deleted subtree would dangle and throw on
+  // the next index.get(), so drop those routes too
+  for (const n of MODEL.nodes)
+    if (n.transfers){
+      n.transfers = n.transfers.filter(t => !doomed.has(t.to));
+      if (!n.transfers.length) delete n.transfers;
+    }
+  for (const d of doomed) manual.delete(d);
+  buildIndex();
+  selected = parent;
+  refresh();
+}
+
+// Rate sliders read and write node properties directly.
+const getVal = (n, k) => n[k] || 0;
+const setVal = (n, k, v) => { n[k] = v; };
+
+function schemeTags(n){
+  const tags = [];
+  for (const t of outflows(n))
+    tags.push(`\u21aa ${index.get(t.to).name} (${(t.rate*100).toFixed(0)}%)`);
+  if (n.ghost) tags.push('ghost recipient');
+  if (n.markup) tags.push(`invoice markup ${(n.markup*100).toFixed(0)}%`);
+  if (n.linkedOwner) tags.push(`linked: ${n.linkedOwner}`);
+  return tags;
+}
+
+// `full` rebuilds the markup. While you drag a slider we pass false and
+// touch only the numbers — replacing the <input> mid-drag would drop the
+// browser's pointer capture and the slider would stick after one step.
+function drawPanel(S, full){
+  const n = index.get(selected), s = S.get(selected);
+  if (full){
+    const sl = (k, label) => `<label>${label} \u2014 <b class="val" data-k="${k}">${(getVal(n,k)*100).toFixed(1)}%</b></label>
+      <input type="range" min="0" max="100" step="0.5" value="${getVal(n,k)*100}" data-k="${k}">`;
+    const tags = schemeTags(n);
+    const hasKids = kids.get(n.id).length > 0;
+    const others = MODEL.nodes.filter(x => x.id !== n.id);
+    document.getElementById('panel').innerHTML = `
+      <h2 id="pTitle">${esc(n.name)}</h2>
+      ${tags.length ? `<div class="sub tag">${tags.map(esc).join(' \u00b7 ')}</div>` : ''}
+      ${n.triggerEvent ? `<div class="warn">\u26a0 ${esc(n.triggerEvent)}</div>` : ''}
+      <table id="pFlows">${flowRows(s)}</table>
+
+      <h2>Rates</h2>
+      ${sl('capture','capture')}
+      ${sl('retain','retain')}
+      ${sl('audit','audit')}
+
+      <h2>Schemes</h2>
+      <label>invoice price — <b class="val" data-k="markup">${(getVal(n,'markup')*100).toFixed(0)}%</b> ${n.markup<0 ? '(under-invoiced)' : n.markup>0 ? '(over-invoiced)' : ''}</label>
+      <input type="range" min="-60" max="100" step="1" value="${getVal(n,'markup')*100}" data-k="markup">
+      ${sl('phantom','phantom goods')}
+      <label class="check"><input type="checkbox" id="cbGhost" ${n.ghost ? 'checked' : ''}> ghost recipient</label>
+      <label class="check${hasKids ? ' off' : ''}"><input type="checkbox" id="cbFront"
+        ${n.frontline ? 'checked' : ''} ${hasKids ? 'disabled' : ''}> frontline (service delivery)</label>
+      ${hasKids ? '<div class="sub">A node that funds others can\u2019t be frontline \u2014 it has to pass money down.</div>' : ''}
+      <h2>Transfers \u2014 send money to another node</h2>
+      <div class="sub">Each row sends a share of this node\u2019s skimmed (diverted) funds to another node. Chain them to build a kickback or laundering loop.</div>
+      <table id="pTransfers">${(n.transfers || []).map((t, i) => `
+        <tr><td>\u21aa ${esc(index.get(t.to) ? index.get(t.to).name : '???')}</td>
+        <td><input type="number" class="trRate" data-i="${i}" min="0" max="100" step="1" value="${(t.rate*100).toFixed(0)}" style="width:48px;margin:0"> %</td>
+        <td title="split into N sub-payments (structuring)">\u00d7<input type="number" class="trChunks" data-i="${i}" min="1" step="1" value="${t.chunks || 1}" style="width:40px;margin:0"></td>
+        <td><button class="trDel danger" data-i="${i}" style="width:auto;margin:0;padding:2px 8px">\u00d7</button></td></tr>`).join('')}</table>
+      <select id="trTo">
+        <option value="">\u2014 choose a node \u2014</option>
+        ${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}
+      </select>
+      <button id="trAdd">Add transfer</button>
+
+      <h2>External income — money from outside the budget</h2>
+      <div class="sub">An investor’s private earnings. Clean if the source is independent and returns are near market; a laundering cover if it comes from a connected party or the returns are impossibly high.</div>
+      <table id="pIncome">${(n.externalIncome || []).map((t, i) => `
+        <tr><td><input type="text" class="incSrc" data-i="${i}" value="${esc(t.source || '')}" style="width:84px;margin:0"></td>
+        <td><input type="number" class="incAmt" data-i="${i}" value="${t.amount || 0}" style="width:76px;margin:0"></td>
+        <td><input type="number" class="incRet" data-i="${i}" value="${((t.return||0)*100).toFixed(0)}" style="width:40px;margin:0">%</td>
+        <td><label class="check" style="margin:0" title="connected party"><input type="checkbox" class="incLink" data-i="${i}" ${t.linked ? 'checked' : ''}></label></td>
+        <td><button class="incDel danger" data-i="${i}" style="width:auto;margin:0;padding:2px 8px">×</button></td></tr>`).join('')}</table>
+      <button id="incAdd">Add income</button>
+
+      <h2>Structure</h2>
+      <label>name</label>
+      <input type="text" id="fName" maxlength="28" value="${esc(n.name)}">
+      ${n.parent ? `<label>share of parent</label>
+        <input type="number" id="fShare" min="0" step="0.05" value="${n.share}">` : ''}
+      <button id="addChild">Add child unit</button>
+      ${n.parent ? '<button id="delNode" class="danger">Delete node and everything under it</button>' : ''}
+
+      <h2>Audit leverage</h2>
+      <div class="sub">Extra delivery per +1pp of oversight</div>
+      <table id="pLev">${levRows(S)}</table>
+      <button id="export">Export labeled run</button>
+      <button id="fitview">Fit view</button>
+      <button id="relayout">Reset layout</button>`;
+  } else {
+    // Partial update: never touch the inputs themselves, or a drag or a
+    // half-typed name dies mid-gesture.
+    document.getElementById('pTitle').textContent = n.name;
+    document.getElementById('pFlows').innerHTML = flowRows(s);
+    document.getElementById('pLev').innerHTML = levRows(S);
+    for (const el of document.querySelectorAll('.val'))
+      el.textContent = (getVal(n, el.dataset.k)*100).toFixed(1) + '%';
+  }
+}
+
+// 'chart'  = dragging a box, geometry only
+// 'values' = dragging a slider, keep the <input> elements alive
+function refresh(mode){
+  const S = simulate(false);
+  drawChart(S);
+  if (mode === 'chart') return;
+  drawStats(S);
+  drawPanel(S, mode !== 'values');
+}
+
+/* ============================================================
+   FLOW ANIMATION — watch the money come down
+   ------------------------------------------------------------
+   One token per funding edge, carrying `fromParent` — the amount
+   that genuinely travels that line. Never `received`, which also
+   holds kickback money that arrived sideways.
+
+   A token leaves only once its parent's token has landed, so the
+   cascade pours one tier at a time: treasury, ministries,
+   provinces, councils, schools.
+
+   Colour is survival — the amount against what an honest system
+   would have delivered to that node. Green at the top, reddening
+   as it drains through leaky nodes on the way down.
+   ============================================================ */
+const HOP = 1500;                                  // ms for one tier to fill
+let fxRaf = null;
+
+// While a pour runs this holds, per node, the money it is currently sitting on
+// (`bal`) plus the two ramps that produced it. A node's balance climbs as its
+// parent pays it and falls as it pays its own children, so the treasury really
+// does read 1.00B, then 999.9M, then less — the money is somewhere else now,
+// not merely "not counted yet".
+let animAt = null;
+const shown  = (id, v) => animAt ? v * (animAt.get(id)?.selfR ?? 0) : v;   // settled amounts
+const inflow = (id, v) => animAt ? v * (animAt.get(id)?.inR   ?? 0) : v;   // amount on the wire
+const balOf  = id => animAt ? (animAt.get(id)?.bal ?? 0) : null;
+
+const ease = u => u * u * (3 - 2 * u);             // smoothstep
+
+function survival(r){
+  const t = clamp((r - 0.55) / 0.45, 0, 1);        // 0 drained, 1 intact
+  const mix = (a, b) => Math.round(a + (b - a) * t);
+  return `rgb(${mix(229,63)},${mix(83,185)},${mix(75,80)})`;
+}
+
+function token(x, y, label, col){
+  const w = 12 + label.length * 6.4;
+  return `<g><rect x="${(x-w/2).toFixed(1)}" y="${(y-9).toFixed(1)}" width="${w.toFixed(1)}"
+      height="18" rx="9" fill="#0f1115" stroke="${col}" stroke-width="1.5"/>
+    <text x="${x.toFixed(1)}" y="${(y+4).toFixed(1)}" text-anchor="middle"
+      font-size="10" fill="${col}">${label}</text></g>`;
+}
+
+function setPlayLabel(running){
+  if (schemeRunning) return;
+  const b = document.getElementById('play');
+  if (b) b.textContent = running ? '■ Stop' : '▶ Play flow';
+}
+
+function stopFlow(){
+  if (fxRaf) cancelAnimationFrame(fxRaf);
+  fxRaf = null;
+  const g = document.getElementById('fx');
+  if (g) g.innerHTML = '';
+  if (animAt){ animAt = null; refresh(); }   // back to the settled totals
+  setPlayLabel(false);
+}
+
+// A tier's money arrives over its own window: depth d fills across
+// [d*HOP, (d+1)*HOP]. The treasury fills first, then the ministries, and so
+// on down — which is what makes it read as pouring rather than switching on.
+const fillAt = (d, elapsed) => ease(clamp((elapsed - d * HOP) / HOP, 0, 1));
+
+// A node's balance at time t: everything its parent has paid it so far, minus
+// everything it has paid onward. A child is paid on its parent's window, so
+// the parent drains over exactly the interval the child fills — the money is
+// never in two places, and never in none.
+function computeAnim(S, elapsed){
+  const m = new Map();
+  for (const n of MODEL.nodes){
+    const d = (POS.get(n.id) || {d:0}).d, s = S.get(n.id);
+    const inR   = n.parent ? fillAt(d - 1, elapsed) : 1;
+    const selfR = fillAt(d, elapsed);
+
+    // Money handed over by a kickback arrives when its *sender* pays out, not
+    // when this node's parent does — the sender can sit far deeper in the
+    // tree. Crediting it on the parent's clock would show it in two places at
+    // once, and the total on screen would exceed the appropriation.
+    const direct = s.fromKickbackDirect;
+    const senders = MODEL.nodes.filter(k => outflows(k).some(t => t.to === n.id));
+    const dSender = senders.length
+      ? Math.max(...senders.map(k => (POS.get(k.id) || {d:0}).d))
+      : d - 1;
+
+    const paidIn = n.parent
+      ? (s.received - direct) * inR + direct * fillAt(dSender, elapsed)
+      : MODEL.appropriation;
+    m.set(n.id, {inR, selfR, bal: Math.max(0, paidIn - (s.down + s.kickedOut) * selfR)});
+  }
+  return m;
+}
+
+function endPour(){
+  stopFlow();
+  const cb = onPourDone; onPourDone = null;
+  if (cb) cb();
+}
+
+function playFlow(){
+  if (fxRaf || animAt){ stopFlow(); return; }        // button toggles
+  const S = simulate(false), C = simulate(true);
+  const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const depth = id => (POS.get(id) || {d:0}).d;
+  const maxD = Math.max(...MODEL.nodes.map(n => depth(n.id)));
+  const total = (maxD + 1) * HOP + 600;
+
+  // One token per funding edge, riding the same window its child fills in.
+  const legs = MODEL.nodes.filter(n => n.parent && POS.has(n.parent)).map(n => {
+    const amount = S.get(n.id).fromParent;
+    const honest = C.get(n.id).fromParent || amount || 1;
+    return {id: n.id, amount, start: depth(n.id) * HOP, col: survival(amount / honest)};
+  });
+
+  const draw = elapsed => {
+    animAt = computeAnim(S, still ? total : elapsed);
+    drawChart(S);
+    drawStats(S);
+
+    // #fx is recreated empty by drawChart, so tokens go in after it. Positions
+    // come off the live path — they stay glued to the curves if you drag a
+    // node or pan the camera mid-pour.
+    const g = document.getElementById('fx');
+    if (!g) return false;
+    let out = '';
+    for (const l of legs){
+      const u = still ? 1 : (elapsed - l.start) / HOP;
+      if (u < 0 || u > 1) continue;
+      const path = document.getElementById('edge-' + l.id);
+      if (!path) continue;
+      const pt = path.getPointAtLength(ease(u) * path.getTotalLength());
+      out += token(pt.x, pt.y, fmt(l.amount), l.col);
+    }
+    g.innerHTML = out;
+    return true;
+  };
+
+  setPlayLabel(true);
+  if (still){                          // reduced motion: final figures, no movement
+    draw(total);
+    setTimeout(endPour, 2500);
+    return;
+  }
+
+  const t0 = performance.now();
+  const frame = now => {
+    const elapsed = now - t0;
+    if (!draw(elapsed)){ fxRaf = null; return; }
+    if (elapsed < total) fxRaf = requestAnimationFrame(frame);
+    else endPour();
+  };
+  fxRaf = requestAnimationFrame(frame);
+}
+
+
+const chartbox = document.getElementById('chartbox');
+const panel = document.getElementById('panel');
+
+// Screen pixels back to model units: subtract the SVG's own rect, then undo
+// the camera transform. Without the second step a node would run away from
+// the cursor as soon as you zoomed.
+function toSvg(e){
+  const r = chartbox.querySelector('svg').getBoundingClientRect();
+  return {x: (e.clientX - r.left - view.x) / view.k,
+          y: (e.clientY - r.top  - view.y) / view.k};
+}
+
+// Middle-drag pans. Chrome opens its autoscroll widget on a middle press, so
+// the default is suppressed on both the pointer and the mouse event.
+chartbox.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });
+chartbox.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefault(); });
+
+chartbox.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = chartbox.querySelector('svg').getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const k = clamp(view.k * Math.pow(0.999, e.deltaY), 0.15, 4);
+  // hold the point under the cursor still while the scale changes
+  view.x = mx - (mx - view.x) * (k / view.k);
+  view.y = my - (my - view.y) * (k / view.k);
+  view.k = k;
+  refresh('chart');
+}, {passive:false});
+
+// Redraw on resize: the SVG is sized to the pane now, not to the content.
+window.addEventListener('resize', () => refresh('chart'));
+
+const looping = () => { const c = document.getElementById('schemeLoop'); return c && c.checked; };
+
+function makePlan(){
+  const pool = MODEL.nodes.filter(n => n.parent && !n.ghost);
+  const host = pool[Math.floor(Math.random()*pool.length)] || root;
+  const demote = () => { if (host.frontline){ delete host.frontline; delete host.ghost; host.retain = .1; } };
+  const type = ['shell', 'roundtrip', 'layering'][Math.floor(Math.random()*3)];
+
+  if (type === 'roundtrip'){
+    const sid = newId();
+    return [
+      () => { demote(); MODEL.nodes.push({id:sid, name:'Front Company', parent:host.id, share:1, capture:.3, retain:.1, audit:.05, markup:.4}); buildIndex(); selected = sid; },
+      () => { const s = index.get(sid); if (s) (s.transfers || (s.transfers = [])).push({to:host.id, rate:.6}); selected = sid; }
+    ];
+  }
+
+  if (type === 'layering'){
+    const a = newId(), b = newId(), c = newId(), sink = newId();
+    const shell = (id, name, parent) => () => { MODEL.nodes.push({id, name, parent, share:1, capture:.04, retain:0, audit:.05}); buildIndex(); selected = id; };
+    return [
+      () => { demote(); MODEL.nodes.push({id:a, name:'Shell A', parent:host.id, share:1, capture:.04, retain:0, audit:.05}); buildIndex(); selected = a; },
+      shell(b, 'Shell B', a),
+      shell(c, 'Shell C', b),
+      () => { if (index.get(c)){ MODEL.nodes.push({id:sink, name:'Nominee', parent:c, share:1, capture:.35, retain:.1, audit:.03, linkedOwner:'nominee'}); buildIndex(); selected = sink; } }
+    ];
+  }
+
+  const official = MODEL.nodes[Math.floor(Math.random()*MODEL.nodes.length)];
+  const shellId = newId();
+  return [
+    () => { demote(); MODEL.nodes.push({id:shellId, name:'Shell Contractor', parent:host.id, share:1, capture:.35, retain:.12, audit:.05}); buildIndex(); selected = shellId; },
+    () => { if (index.get(shellId)) index.get(shellId).markup = .6; selected = shellId; },
+    () => {
+      if (!index.get(shellId)) return;
+      const gid = newId();
+      MODEL.nodes.push({id:gid, name:'Ghost Project', parent:shellId, share:1, capture:.05, retain:0, audit:.05, frontline:true, ghost:true});
+      buildIndex(); selected = gid;
+    },
+    () => {
+      const s = index.get(shellId); if (!s) return;
+      const to = (!official || official.id === shellId) ? host.id : official.id;
+      (s.transfers || (s.transfers = [])).push({to, rate:.5});
+      selected = shellId;
+    }
+  ];
+}
+
+function finishScheme(){
+  schemeRunning = false; schemeStop = false; onPourDone = null;
+  const btn = document.getElementById('scheme'); if (btn) btn.textContent = '✦ Scheme';
+  refresh();
+}
+
+function schemeCycle(){
+  if (schemeStop){ finishScheme(); return; }
+  if (schemePlan.length === 0){
+    if (schemeBuilt && !looping()){ finishScheme(); return; }
+    schemePlan = makePlan();
+    schemeBuilt = true;
+  }
+  schemePlan.shift()();
+  fitView();
+  onPourDone = () => { if (schemeStop) finishScheme(); else schemeCycle(); };
+  playFlow();
+}
+
+function toggleScheme(){
+  if (schemeRunning){ schemeStop = true; if (fxRaf || animAt) endPour(); return; }
+  stopFlow();
+  schemeRunning = true; schemeStop = false; schemePlan = []; schemeBuilt = false;
+  const btn = document.getElementById('scheme'); if (btn) btn.textContent = '■ Stop';
+  schemeCycle();
+}
+
+document.getElementById('play').addEventListener('click', playFlow);
+document.getElementById('scheme').addEventListener('click', toggleScheme);
+
+// The quick-add shortcut is a click target, never a drag handle.
+chartbox.addEventListener('click', e => {
+  const q = e.target.closest('.qadd');
+  if (q) addChild(q.dataset.add);
+});
+
+chartbox.addEventListener('pointerdown', e => {
+  if (e.button === 1){                       // middle button: pan the camera
+    pan = {x0: e.clientX, y0: e.clientY, vx: view.x, vy: view.y};
+    chartbox.classList.add('panning');
+    e.preventDefault();
+    return;
+  }
+  if (e.target.closest('.qadd')) return;
+  const g = e.target.closest('.node');
+  if (!g) return;
+  const id = g.dataset.id, p = toSvg(e), cur = POS.get(id);
+  // Remember the grab offset so the box doesn't jump its corner to the cursor.
+  drag = {id, dx: p.x - cur.x, dy: p.y - cur.y, x0: e.clientX, y0: e.clientY, moved: false};
+  e.preventDefault();
+});
+
+// Listening on window, not the SVG: redrawing replaces the element you
+// grabbed, so anything bound to it would lose the rest of the gesture.
+window.addEventListener('pointermove', e => {
+  if (pan){
+    view.x = pan.vx + (e.clientX - pan.x0);
+    view.y = pan.vy + (e.clientY - pan.y0);
+    refresh('chart');
+    return;
+  }
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
+  drag.moved = true;                       // 4px deadzone: a sloppy click stays a click
+  const p = toSvg(e);
+  manual.set(drag.id, {x: p.x - drag.dx, y: p.y - drag.dy});
+  refresh('chart');
+});
+
+window.addEventListener('pointerup', () => {
+  if (pan){ pan = null; chartbox.classList.remove('panning'); return; }
+  if (!drag) return;
+  const {id, moved} = drag;
+  drag = null;
+  if (moved) refresh('chart');             // clear the .drag cursor
+  else { selected = id; refresh(); }
+});
+
+// Continuous edits — 'values' keeps the live <input> elements in place.
+panel.addEventListener('input', e => {
+  const t = e.target, n = index.get(selected);
+  if (t.classList.contains('trRate')){ n.transfers[+t.dataset.i].rate = clamp((+t.value || 0) / 100, 0, 1); refresh('values'); return; }
+  if (t.classList.contains('trChunks')){ n.transfers[+t.dataset.i].chunks = Math.max(1, Math.round(+t.value || 1)); refresh('values'); return; }
+  if (t.classList.contains('incSrc')){ n.externalIncome[+t.dataset.i].source = t.value; refresh('values'); return; }
+  if (t.classList.contains('incAmt')){ n.externalIncome[+t.dataset.i].amount = Math.max(0, +t.value || 0); refresh('values'); return; }
+  if (t.classList.contains('incRet')){ n.externalIncome[+t.dataset.i].return = (+t.value || 0) / 100; refresh('values'); return; }
+  if (t.type === 'range'){ setVal(n, t.dataset.k, +t.value / 100); refresh('values'); return; }
+  if (t.id === 'fName'){ n.name = t.value.slice(0, 28); refresh('values'); return; }
+  if (t.id === 'fShare'){ n.share = Math.max(0, +t.value || 0); refresh('values'); return; }
+});
+
+// Edits that change what controls exist, so the panel is rebuilt in full.
+panel.addEventListener('change', e => {
+  const n = index.get(selected);
+  if (e.target.id === 'cbGhost'){
+    if (e.target.checked) n.ghost = true; else delete n.ghost;
+    refresh(); return;
+  }
+  if (e.target.id === 'cbFront'){
+    if (e.target.checked){ n.frontline = true; n.retain = 0; }   // frontline spends, never forwards
+    else delete n.frontline;
+    refresh(); return;
+  }
+  if (e.target.classList.contains('incLink')){
+    n.externalIncome[+e.target.dataset.i].linked = e.target.checked;
+    refresh(); return;
+  }
+});
+
+panel.addEventListener('click', e => {
+  const n = index.get(selected);
+  if (e.target.id === 'addChild'){ addChild(selected); return; }
+  if (e.target.id === 'delNode'){ removeSubtree(selected); return; }
+  if (e.target.id === 'trAdd'){
+    const to = document.getElementById('trTo').value;
+    if (to){ (n.transfers || (n.transfers = [])).push({to, rate:.5}); refresh(); }
+    return;
+  }
+  if (e.target.classList.contains('trDel')){
+    n.transfers.splice(+e.target.dataset.i, 1);
+    if (!n.transfers.length) delete n.transfers;
+    refresh(); return;
+  }
+  if (e.target.id === 'incAdd'){
+    (n.externalIncome || (n.externalIncome = [])).push({source:'PrivateCo', amount:5e8, return:.08, linked:false});
+    refresh(); return;
+  }
+  if (e.target.classList.contains('incDel')){
+    n.externalIncome.splice(+e.target.dataset.i, 1);
+    if (!n.externalIncome.length) delete n.externalIncome;
+    refresh(); return;
+  }
+  if (e.target.id === 'fitview'){ fitView(); refresh('chart'); return; }
+  if (e.target.id === 'relayout'){ manual.clear(); fitView(); refresh(); return; }
+  if (e.target.id !== 'export') return;
+  const S = simulate(false);
+  const run = {
+    appropriation: MODEL.appropriation,
+    nodes: MODEL.nodes.map(n => {
+      const r = rates(n);
+      const schemes = [];
+      if (outflows(n).length) schemes.push('kickback_loop');
+      if (n.ghost) schemes.push('ghost_recipient');
+      if (n.markup > 0) schemes.push('invoice_inflation');
+      const dirtyIncome = (n.externalIncome || []).some(t => t.linked || (t.return||0) > 0.25);
+      const mk = n.markup || 0;
+      const extra = mk < -0.1 || (n.phantom||0) > 0.05 || (n.transfers||[]).some(t => (t.chunks||1) >= 5);
+      return {
+        ...n,
+        ...S.get(n.id),
+        effectiveCapture: r.c,
+        schemes,
+        label: schemes.length || r.c > 0.08 || dirtyIncome || extra ? 'corrupt' : 'clean'
+      };
+    })
+  };
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(run, null, 2)], {type:'application/json'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'run.json'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+buildIndex();
+fitView();
+refresh();
+</script>
+</body>
+</html>
