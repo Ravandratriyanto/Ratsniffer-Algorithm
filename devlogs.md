@@ -86,3 +86,37 @@ Two parts, clean language seam:
 - **GNN / graph detection** for kickback rings and layering (the natural tool for the graph structure).
 - Write the **architecture decisions above into `flowcharts.html`** (or a design doc) so they don't drift.
 - Precision tuning: ML got trigger-happy at high training volume (one round dipped to 88%) — threshold / more clean examples.
+
+---
+
+## Session log — 2026-10-04
+
+### Shipped this session
+- **Money-laundering typologies, full stack.**
+  - Pass 1 — `laundering.py`: `round_trip` (money-graph cycles via networkx) and `layering` (pass-through conduit chains). Zero false positives in tests.
+  - Pass 2 — `gates.py` two-sided `price_band` (over + under-invoicing) + `structuring` (sub-threshold `chunks`); `oracle.py` `oracle_phantom` (phantom goods). Fields: transfer `chunks`, negative `markup`, node `phantom`.
+  - Sandbox: **✦ Scheme** now builds 6 patterns (shell, round-trip, layering, structuring, phantom, under-invoice); panel UI for chunks / negative markup / phantom.
+- **Investor / external income.** Sandbox **Stock Exchange** + **Bank** fixtures; clean income flows from the Exchange, dirty from a shell box, frontline cashes out to the Bank. `oracle.wealth_reconciliation` clears honest investors, flags `laundered_wealth` / `implausible_returns`.
+- **Decentralization — `consensus.py`.** Multi-validator quorum consensus over `chain.py`. Verified: a lone corrupt node can't rewrite history (its chain invalid, honest quorum canonical); a forged rewrite gets 0 votes. Crosses from "blockchain data structure" to "decentralized ledger with consensus."
+- **Consortium wired into `ingest`.** `build_ledger` now commits through a 5-of-N quorum; **external income is a real ledger transaction** (sender = Stock Exchange / shell → recipient), so the Exchange is actually connected. Added fast `entities_and_truth` so `arena` skips consensus per-scheme. Fixed a latent `sniff.py` bug (flagged computed from a partial flag list).
+- **Adversary generates the new typologies** (negative markup, phantom, chunks, external income) + `breed.py` motifs; `arena` stress-tests the full stack (100/100 holdout, hid 1–2/round).
+- **Sandbox UX:** free camera while running — `userMovedCamera` pauses auto-fit once you pan/zoom/drag, so you can rearrange and zoom out mid-flow. Fit view / Reset layout resume auto-follow.
+- **Repo reorg:** `ratsniffer/` (algorithm) + `sandbox/` (generator). Path tweaks: `sniff.py` loads `run.json` script-relative; `start.sh` → `sandbox/sandbox.html`; README run commands. Imports needed no change (Python puts the script dir on the path). Pushed to GitHub as **Ratsniffer-Algorithm**.
+- **`README.md`** written (honest framing; tagline: "an algorithm stacked on an algorithmy sandwich").
+- **Honest problem audit** done (see below).
+
+### The big realization (next session's main thread)
+The current adversary is a **cartoon villain** — it plants obvious dirty nodes (capture 0.5, markup 0.8) that trip every alarm. Real corruption **looks like normal business until you add it up.** Next: a **mimicry adversary** —
+1. **Blend-in generator** (`disguised_scheme`): mostly-clean tree, theft hidden *under every threshold* (capture ~0.07 < 0.08, markup < 15% band, no `linkedOwner`, no transfers → evades gates + analyzer). Mark these `corrupt: True` (intent) so they're still *labeled* corrupt.
+2. **New fitness** in `arena`: `value_extracted × fraction_classified_clean` → evolve toward *profitable disguise*, not loud-and-hidden.
+3. **Expected finding (the point):** the detector will MISS disguised corruption — threshold-per-node detection can't catch "death by a thousand cuts." That motivates **aggregate/pattern detectors** (subtree total leakage, clustering of many small deviations, whole-tree flow shape).
+4. **Ground in real KPK case *structures*** (not accusations): social-aid/Bansos skim, infrastructure markup+kickback, state-insurance investment fraud (→ external-income feature), fictitious procurement. Pull actual numbers from KPK's published files; model the *pattern*.
+
+**Started already:** `world.py` now labels by intent (`n.get("corrupt")`) so under-threshold disguised corruption still counts as corrupt — the foundation for the whole mimicry direction. **Resume here:** write `disguised_scheme` in `adversary.py`, then the recall demo, then the new fitness, then an aggregate detector.
+
+### Honest problem list (from the audit — fix order)
+- **Highest ROI: no tests.** Zero pytest despite it being a dep — this is why the same typos (`curl`, missing commas) keep reappearing. A dozen tiny tests would end that.
+- **Circular evaluation** (detector tested on its own simulator); **oracle reads ground-truth directly** (cheats); **labels share thresholds with detectors** (intent-labeling above starts fixing this).
+- Consensus has **no real crypto sigs** (modeled votes) and **no real P2P** (in-process); **arena bypasses the chain**.
+- `world.py` ↔ `sandbox.html` duplicate the sim with **no cross-check test** (drift risk); real **browser export round-trip unverified**; `linked` provenance is a hand-set stub.
+- Hygiene: no `requirements.txt`; `start.sh` installs unused deps (pandas/scipy); `.pyc` in first commit's history; no input validation; `world.py` has a duplicate `effectiveCapture`/`schemes` line.

@@ -82,5 +82,13 @@ for n in nodes[1:]:
                 n.setdefault("transfers", []).append(t)
     return {"appropriation": approp, "nodes": nodes}
             
-
+def disguised_scheme(rng=NOne, n_clean=6, n_dirty=5):
+    rng = rng or random.Random()
+    approp = rng.choice([1e12, 5.9e12, 6e12])
+    nodes = [dict(id="n0", name="Budget", parent=None, share=1.0,capture=rng.uniform(0, 0.01), retain=rng.uniform(0, 0.02),audit=rng.uniform(0.3, 0.5))]
+    clean_ids = ["n0"]
+    i = 1
+    for _ in range(n_clean):
+        parent = rng.choice(clean_ids)
+        nodes.append(dict(id=f"n{i}", name=f"Dept{i}, parent=parent.  share=rng.uniform(0.3, 1.0),"))
             

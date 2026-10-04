@@ -905,7 +905,7 @@ function makePlan(){
   const pool = MODEL.nodes.filter(n => n.parent && !n.ghost);
   const host = pool[Math.floor(Math.random()*pool.length)] || root;
   const demote = () => { if (host.frontline){ delete host.frontline; delete host.ghost; host.retain = .1; } };
-  const types = ['shell', 'roundtrip', 'layering', 'structuring', 'phantom', 'underinvoice'];
+  const types = ['shell', 'roundtrip', 'layering', 'structuring', 'phantom', 'underinvoice', 'disguised'];
   const type = types[Math.floor(Math.random()*types.length)];
 
   if (type === 'roundtrip'){
@@ -949,6 +949,15 @@ function makePlan(){
       () => { demote(); MODEL.nodes.push({id:vid, name:'Export Co', parent:host.id, share:1, capture:.05, retain:.1, audit:.1}); buildIndex(); selected = vid; },
       () => { const v = index.get(vid); if (v) v.markup = -.4; selected = vid; }
     ];
+  }
+
+  if (type === 'disguised'){
+    const ids = [newId(), newId(), newId(), newId()];
+    return ids.map((id, k) => () => {
+      if (k === 0) demote();
+      MODEL.nodes.push({id, name:'Vendor '+(k+1), parent:host.id, share:1, capture:.04+Math.random()*.035, retain:.02, audit:.4, markup:Math.random()*.12, corrupt:true});
+      buildIndex(); selected = id;
+    });
   }
 
   const official = MODEL.nodes[Math.floor(Math.random()*MODEL.nodes.length)];
@@ -1123,7 +1132,7 @@ panel.addEventListener('click', e => {
         ...S.get(n.id),
         effectiveCapture: r.c,
         schemes,
-        label: schemes.length || r.c > 0.08 || dirtyIncome || extra ? 'corrupt' : 'clean'
+        label: n.corrupt || schemes.length || r.c > 0.08 || dirtyIncome || extra ? 'corrupt' : 'clean'
       };
     })
   };

@@ -130,6 +130,6 @@ def make_run(model):
         dirty_income = any(t.get("linked") or (t.get("return") is not None and t["return"] > 0.25) for t in inc)
         mk = n.get("markup", 0)
         extra = mk < -0.1 or n.get("phantom", 0) > 0.05 or any(t.get("chunks", 1) >= 5 for t in n.get("transfers", []))
-        row["label"] = "corrupt" if (schemes or c > 0.08 or dirty_income or extra) else "clean"
+        row["label"] = "corrupt" if (n.get("corrupt") or schemes or c > 0.08 or dirty_income or extra) else "clean"
         out.append(row)
     return {"appropriation": model["appropriation"], "nodes": out}
