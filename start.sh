@@ -14,6 +14,6 @@ if [ -f requirements.txt ]; then
 else
   pip install -q pandas numpy networkx scikit-learn scipy pytest
 fi
-echo "serving on http://localhost:$PORT/sandbox.html"
-python -m webbrowser "http://localhost:$PORT/sandbox.html" 2>/dev/null || true
+echo "serving on http://localhost:$PORT/sandbox/sandbox.html"
+python -m webbrowser "http://localhost:$PORT/sandbox/sandbox.html" 2>/dev/null || true
 exec python -m http.server "$PORT"

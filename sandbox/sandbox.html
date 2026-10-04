@@ -97,7 +97,7 @@ let drag = null;
 // through it. Middle-drag pans, wheel zooms about the cursor.
 let view = {x:0, y:0, k:1};
 let pan = null;
-let justBorn = null, schemeRunning = false, schemeStop = false, onPourDone = null, schemePlan = [], schemeBuilt = false;
+let justBorn = null, schemeRunning = false, schemeStop = false, onPourDone = null, schemePlan = [], schemeBuilt = false, userMovedCamera = false;
 
 function buildIndex(){
   // Normalise the legacy single `kickback` into the general `transfers` list so
@@ -885,6 +885,7 @@ chartbox.addEventListener('auxclick', e => { if (e.button === 1) e.preventDefaul
 
 chartbox.addEventListener('wheel', e => {
   e.preventDefault();
+  userMovedCamera = true;
   const r = chartbox.querySelector('svg').getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   const k = clamp(view.k * Math.pow(0.999, e.deltaY), 0.15, 4);
@@ -904,7 +905,8 @@ function makePlan(){
   const pool = MODEL.nodes.filter(n => n.parent && !n.ghost);
   const host = pool[Math.floor(Math.random()*pool.length)] || root;
   const demote = () => { if (host.frontline){ delete host.frontline; delete host.ghost; host.retain = .1; } };
-  const type = ['shell', 'roundtrip', 'layering'][Math.floor(Math.random()*3)];
+  const types = ['shell', 'roundtrip', 'layering', 'structuring', 'phantom', 'underinvoice'];
+  const type = types[Math.floor(Math.random()*types.length)];
 
   if (type === 'roundtrip'){
     const sid = newId();
@@ -922,6 +924,30 @@ function makePlan(){
       shell(b, 'Shell B', a),
       shell(c, 'Shell C', b),
       () => { if (index.get(c)){ MODEL.nodes.push({id:sink, name:'Nominee', parent:c, share:1, capture:.35, retain:.1, audit:.03, linkedOwner:'nominee'}); buildIndex(); selected = sink; } }
+    ];
+  }
+
+  if (type === 'structuring'){
+    const sid = newId();
+    return [
+      () => { demote(); MODEL.nodes.push({id:sid, name:'Smurf Account', parent:host.id, share:1, capture:.3, retain:.1, audit:.05}); buildIndex(); selected = sid; },
+      () => { const s = index.get(sid); if (s) (s.transfers || (s.transfers = [])).push({to:host.id, rate:.6, chunks:12}); selected = sid; }
+    ];
+  }
+
+  if (type === 'phantom'){
+    const vid = newId();
+    return [
+      () => { demote(); MODEL.nodes.push({id:vid, name:'Supplier', parent:host.id, share:1, capture:.1, retain:.1, audit:.05}); buildIndex(); selected = vid; },
+      () => { const v = index.get(vid); if (v) v.phantom = .6; selected = vid; }
+    ];
+  }
+
+  if (type === 'underinvoice'){
+    const vid = newId();
+    return [
+      () => { demote(); MODEL.nodes.push({id:vid, name:'Export Co', parent:host.id, share:1, capture:.05, retain:.1, audit:.1}); buildIndex(); selected = vid; },
+      () => { const v = index.get(vid); if (v) v.markup = -.4; selected = vid; }
     ];
   }
 
@@ -959,7 +985,7 @@ function schemeCycle(){
     schemeBuilt = true;
   }
   schemePlan.shift()();
-  fitView();
+  if (!userMovedCamera) fitView();
   onPourDone = () => { if (schemeStop) finishScheme(); else schemeCycle(); };
   playFlow();
 }
@@ -967,7 +993,7 @@ function schemeCycle(){
 function toggleScheme(){
   if (schemeRunning){ schemeStop = true; if (fxRaf || animAt) endPour(); return; }
   stopFlow();
-  schemeRunning = true; schemeStop = false; schemePlan = []; schemeBuilt = false;
+  schemeRunning = true; schemeStop = false; schemePlan = []; schemeBuilt = false; userMovedCamera = false;
   const btn = document.getElementById('scheme'); if (btn) btn.textContent = '■ Stop';
   schemeCycle();
 }
@@ -983,7 +1009,7 @@ chartbox.addEventListener('click', e => {
 
 chartbox.addEventListener('pointerdown', e => {
   if (e.button === 1){                       // middle button: pan the camera
-    pan = {x0: e.clientX, y0: e.clientY, vx: view.x, vy: view.y};
+    pan = {x0: e.clientX, y0: e.clientY, vx: view.x, vy: view.y}; userMovedCamera = true;
     chartbox.classList.add('panning');
     e.preventDefault();
     return;
@@ -1008,7 +1034,7 @@ window.addEventListener('pointermove', e => {
   }
   if (!drag) return;
   if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;
-  drag.moved = true;                       // 4px deadzone: a sloppy click stays a click
+  drag.moved = true; userMovedCamera = true;   // 4px deadzone: a sloppy click stays a click
   const p = toSvg(e);
   manual.set(drag.id, {x: p.x - drag.dx, y: p.y - drag.dy});
   refresh('chart');
@@ -1069,7 +1095,7 @@ panel.addEventListener('click', e => {
     refresh(); return;
   }
   if (e.target.id === 'incAdd'){
-    (n.externalIncome || (n.externalIncome = [])).push({source:'PrivateCo', amount:5e8, return:.08, linked:false});
+    (n.externalIncome || (n.externalIncome = [])).push({source:'Stock Exchange', amount:5e8, return:.08, linked:false});
     refresh(); return;
   }
   if (e.target.classList.contains('incDel')){
@@ -1077,8 +1103,8 @@ panel.addEventListener('click', e => {
     if (!n.externalIncome.length) delete n.externalIncome;
     refresh(); return;
   }
-  if (e.target.id === 'fitview'){ fitView(); refresh('chart'); return; }
-  if (e.target.id === 'relayout'){ manual.clear(); fitView(); refresh(); return; }
+  if (e.target.id === 'fitview'){ userMovedCamera = false; fitView(); refresh('chart'); return; }
+  if (e.target.id === 'relayout'){ userMovedCamera = false; manual.clear(); fitView(); refresh(); return; }
   if (e.target.id !== 'export') return;
   const S = simulate(false);
   const run = {

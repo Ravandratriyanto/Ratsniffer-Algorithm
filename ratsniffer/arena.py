@@ -1,7 +1,7 @@
 from __future__ import annotations
 import random
 from world import make_run
-from ingest import build_ledger
+from ingest import entities_and_truth
 from ml import Learner, detect
 from features import build_features
 from oracle import attest, reconcile, wealth_reconciliation
@@ -22,7 +22,7 @@ def valid(model):
 
 def xy(model):
     run = make_run(model)
-    _, ent, truth = build_ledger(run)
+    ent, truth = entities_and_truth(run)
     feats = build_features(ent)
     X = [feats[i] for i in ent]
     y = [1 if truth[i]["label"] == "corrupt" else 0 for i in ent]

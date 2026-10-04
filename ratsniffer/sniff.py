@@ -1,15 +1,17 @@
+import os
 from ingest import load_run, build_ledger
 from gates import run_gates
 from analyzer import run_analyzer
 from oracle import wealth_reconciliation
 from laundering import run_laundering
-bc, entities, truth = build_ledger(load_run("run.json"))
-ok, reason = bc.verify_chain()
-print(f"ledger: {len(bc.chain)} blocks  |  chain valid: {ok}")
 
-flags = run_gates(entities) + run_analyzer(entities)
-flagged = {f.entity for f in flags}
+RUN_PATH = os.path.join(os.path.dirname(__file__), "run.json")
+cons, entities, truth = build_ledger(load_run(RUN_PATH))
+canon = cons.canonical()
+print(f"consortium: {len(cons.validators)} validators (quorum {cons.quorum})  |  canonical chain: {len(canon.chain) if canon else 'NONE'} blocks")
+
 flags = run_gates(entities) + run_analyzer(entities) + wealth_reconciliation(entities) + run_laundering(entities)
+flagged = {f.entity for f in flags}
 print("\nFLAGS")
 for f in sorted(flags, key=lambda f: -f.severity):
     print(f"  {entities[f.entity]['name']:<28} {f.detector:<18} sev {f.severity:.2f}  {f.detail}")

@@ -53,7 +53,7 @@ def crossover(a, b, rng=None):
 def inject_motif(model, rng=None):
     rng = rng or random.Random()
     m = clone(model)
-    motif = rng.choice(["skim", "markup", "kickback", "shell", "ghost", "nominee"])
+    motif = rng.choice(["skim", "markup", "kickback", "shell", "ghost", "nominee","under_invoice", "phantom", "structuring", "laundered_income"])
     n = rng.choice(m["nodes"][1:] or m["nodes"])
     if motif == "skim":
         n["capture"] = rng.uniform(0.2, 0.5); n["audit"] = rng.uniform(0.02, 0.15)
@@ -72,6 +72,19 @@ def inject_motif(model, rng=None):
         n["frontline"] = True; n["ghost"] = True; n.pop("transfers", None)
     elif motif == "nominee":
         n["linkedOwner"] = "nominee"
+    elif motif == "under_invoice":
+        n["markup"] = rng.uniform(-0.6, -0.2)
+    elif motif == "phantom":
+        n["phantom"] = rng.uniform(0.3, 0.8)
+    elif motif == "structuring":
+        if n.get("transfers"):
+            n["transfers"][0]["chunks"] = rng.randint(6, 20)
+        else:
+            tgt = rng.choice(m["nodes"])
+            if tgt["id"] != n["id"]:
+                n.setdefault("transfers", []).append({"to": tgt["id"], "rate": rng.uniform(0.3, 0.7), "chunks": rng.randint(6, 20)})
+    elif motif == "laundered_income":
+        n["externalIncome"] = [{"source": "shell", "amount": model["appropriation"] * 0.03, "return": 0.08, "linked": True}]
     return m
 
 

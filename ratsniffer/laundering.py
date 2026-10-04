@@ -33,7 +33,7 @@ def layering(entities, pass_ratio=0.92, min_chain=3):
         if not is_conduit(e):
             continue 
         run, cur = [], e["id"]
-        while cur in entities and is_conduit(entities[curl]):
+        while cur in entities and is_conduit(entities[cur]):
             run.append(cur)
             ch = kids.get(cur, [])
             cur = ch[0] if ch else None 
