@@ -120,3 +120,47 @@ The current adversary is a **cartoon villain** — it plants obvious dirty nodes
 - Consensus has **no real crypto sigs** (modeled votes) and **no real P2P** (in-process); **arena bypasses the chain**.
 - `world.py` ↔ `sandbox.html` duplicate the sim with **no cross-check test** (drift risk); real **browser export round-trip unverified**; `linked` provenance is a hand-set stub.
 - Hygiene: no `requirements.txt`; `start.sh` installs unused deps (pandas/scipy); `.pyc` in first commit's history; no input validation; `world.py` has a duplicate `effectiveCapture`/`schemes` line.
+
+---
+
+## Session log — 2026-10-05
+
+### Repo surgery (before any code)
+- **Merged the two repos.** Local `Ratsniffer-Blockchain-Algorithm` (9 commits, Sept 8: root `sandbox.html`, `test/engine.test.js`, `DEVLOG.md`) and `Ratsniffer-Algorithm` (Oct 4) had **unrelated histories** — the Oct 4 repo was `git init`'d fresh rather than cloned, so `git pull` refused. Verified the new `sandbox/sandbox.html` contains all the Sept 8 flow-animation work verbatim (`animAt`, `computeAnim`, pour, kickback) plus ~350 lines, i.e. a strict successor. Took the new repo wholesale (`reset --hard`), old head tagged `pre-reset-blockchain-algo` and still on GitHub at the old origin. `origin` repointed to `Ratsniffer-Algorithm`.
+- **Casualty:** `test/engine.test.js` (28 checks) is not in the new repo. Recover with `git checkout pre-reset-blockchain-algo -- test/engine.test.js`; it reads the engine out of `sandbox.html`, so it needs repointing at `sandbox/sandbox.html`.
+- `__pycache__` untracked + ignored (commit `7a8bb54`). `journal.jsonl` and `.venv/` ignored.
+
+### Shipped this session — the transaction journal
+An **independent, append-only record of every movement of money**, separate from the chain.
+
+- **`world.py` emits an event log.** `simulate()` now returns `(S, events)`; `make_run` puts `events` into the run dict so it survives the JSON export. One entry per actual movement, at four sites: `base()` child recursion, `inject()` child recursion, `inject()`'s outflow loop, and the seeds pass — plus the root appropriation. Zero-amount calls are filtered, which correctly drops the cases where `inject` bounces (depth > 8, or dust below `appropriation * 1e-9`).
+- **`journal.py`** — JSONL, one line per transaction, each hash-linked to the previous (`prev` → `digest`, sha256 over the canonical form). Verifies standalone: no blocks, no merkle root, no PoW, no consortium. `Journal.record/commit/load/verify/txns` + `cross_check(journal, chain)`.
+- **`ingest.build_ledger`** mints one `Transaction` **per event** instead of per node/edge, with `ts=float(seq)` so `txid` is reproducible across runs. Optional `journal=` arg (off by default — `arena` shouldn't pay disk I/O in its hot loop).
+- **`sniff.py`** wires it in and prints journal entry count, verify status, and the cross-check verdict.
+
+### The finding that reshaped the design
+**A transfer edge is not a transaction — each *firing* is.** `simulate()` is a cascade: the seeds pass fires an edge from parent money, then `inject()` delivers that kickback into the target, which skims it and fires *its own* transfers again, recursing to depth 8. The same edge moves money many times.
+
+Measured: `run.json` plus one return edge (`recipients -> consortium`, rate 0.4) to close a cycle took the log from **6 events to 63**, with `recipients -> consortium` firing **19 times**. The old `ingest` minted *one* txn per edge at amount `n["kickedOut"]` (the node's grand total across all edges and all firings), so a whole cascade collapsed into a single row. That's why the journal is emitted from the sim rather than derived from the model — derivation can't see the cascade.
+
+### Verified
+- **Completeness:** `sum(events into X) == S[X]["received"]` exact for every node, on `run.json` and on the cycle variant. Cheapest proof no movement was missed and none invented.
+- **Tamper-evidence:** edited amount → `line 2: digest mismatch`; deleted line → `line 2: seq is 3, expected 2`; reopen-and-append resumes `seq`/`prev` correctly.
+- **Cross-check** catches all three divergence classes — in chain not journal, in journal not chain, same txid with different fields.
+- **`txid` reproducible** across two builds of the same input.
+- **No leak:** `events` is local to `simulate()`; arena loop gives identical counts across generations. (First draft had it module-level, which would have accumulated across every generation forever.)
+- **No regression:** `sniff.py` still 100% precision / 100% recall, 2 blocks.
+- `run.json` regenerated through `make_run` to carry `events` — zero numeric drift against the old file.
+
+### Corrections to earlier entries
+- **`disguised_scheme` is already written** (`ratsniffer/adversary.py:44`, 29 lines, under-threshold capture + no `linkedOwner` + no transfers). The Oct 4 "Resume here" pointer is stale — the real blocker is `demo_mimicry.py`, which was typed and never run: `X, y = []. []`, `entities+and_truth`, `random_schemes` (the function is `random_scheme`), `for i ent:`, `truth [i][label]`. Also its eval block sits *inside* the 40-iteration training loop with the `print` outside, so it runs 800 worlds to report one number.
+- **`adversary/` at the repo root is a corrupted dead copy** — a pre-Oct-4 snapshot of `ratsniffer/adversary.py`, missing every Oct 4 feature (phantom, `externalIncome`, chunks, negative markup), syntax-broken (`rng=NOne`, `parent=parentshare=`, `rng.choice(ndoes)`), and imported by nothing. Delete it. This is the "same typos keep reappearing" pathology in the problem list, caught in the act.
+- `world.py`'s duplicate `effectiveCapture`/`schemes` lines — **fixed**.
+- Only 15 of 17 Python files compiled at session start; the two failures were `adversary/adversary.py` and `demo_mimicry.py` above.
+
+### Open threads
+- **`TxType.PROCUREMENT` is now unminted.** Events don't carry markup, so nothing produces a procurement txn. Detection is unaffected (`price_band` reads `entities`, not txns), but the FUNDING/PROCUREMENT double-booking decision is now forced rather than deferred: emit a procurement event in `world.py`, or drop the enum member and accept that markup lives on the entity. Note the old code booked *both* at the same sender/recipient/amount — confirmed on `run.json`, `consortium -> vendors` appeared twice at 2,143,355,054,784 — and `unit_price` held a ratio (1.45), not a price.
+- **`sandbox.html` must emit the same `events` shape** or the JS→Python seam drifts. Browser exports currently produce no events, so `build_ledger` mints an empty ledger from them. This is the duplicate-sim drift risk in the problem list, now with teeth.
+- **`entities_and_truth`'s `transfers_out`** still pairs every transfer with `n["kickedOut"]`, so `off_tree_transfer` can compute `frac > 1` on a multi-transfer node. Independent of the journal; worth fixing on its own.
+- `journal.jsonl` is deleted at the start of each `sniff.py` run (appending across runs would stack). Key it per run if history is wanted.
+- Still no tests, still no `requirements.txt`. Actual third-party imports across the tree are **networkx, numpy, sklearn** only — `start.sh`'s fallback also installs pandas, scipy, pytest.

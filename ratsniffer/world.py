@@ -28,7 +28,21 @@ def simulate(model, clean=False):
             kids[n["parent"]].append(n)
 
     S = {}
+    events = []
     appropriation = model["appropriation"]
+
+    def ev(src, dst, amount, kind, depth, t=None):
+        # One entry per movement of money. inject() returns 0.0 when it bounces a
+        # call (depth cap, or dust), so a zero amount means nothing actually moved.
+        if amount <= 0:
+            return
+        e = {"seq": len(events), "from": src, "to": dst,
+             "amount": amount, "kind": kind, "depth": depth}
+        if t is not None:
+            e["rate"] = t.get("rate")
+            if t.get("chunks"):
+                e["chunks"] = t["chunks"]
+        events.append(e)
 
     def outflows(n):
         return [t for t in n.get("transfers", []) if t.get("rate", 0) > 0 and t["to"] in nodes]
@@ -54,7 +68,9 @@ def simulate(model, clean=False):
                           fromParent=received, fromKickback=0.0, fromKickbackDirect=0.0)
         tot = share_total(ch)
         for k in ch:
-            base(k, down * k["share"] / tot)
+            amt = down * k["share"] / tot
+            ev(n["id"], k["id"], amt, "funding", 0)
+            base(k, amt)
 
     def inject(node_id, amount, depth):
         n = nodes.get(node_id)
@@ -79,7 +95,10 @@ def simulate(model, clean=False):
         tot = share_total(ch)
         passed = 0.0
         for k in ch:
-            passed += inject(k["id"], down * k["share"] / tot, depth + 1)
+            amt = down * k["share"] / tot
+            got = inject(k["id"], amt, depth + 1)
+            ev(node_id, k["id"], got, "funding", depth + 1)
+            passed += got
         stuck = down - passed
         if stuck > 0:
             s["retained"] += stuck; s["down"] -= stuck
@@ -89,27 +108,30 @@ def simulate(model, clean=False):
                 if seed <= 0:
                     continue
                 out = inject(t["to"], seed, depth + 1)
+                ev(node_id, t["to"], out, "transfer", depth + 1, t)
                 s["diverted"] -= out; s["kickedOut"] += out
                 S[t["to"]]["fromKickbackDirect"] += out
         return amount
 
+    ev(None, root["id"], appropriation, "appropriation", 0)
     base(root, appropriation)
     if not clean:
-        seeds = [(n, t["to"], S[n["id"]]["diverted"] * t["rate"])
+        seeds = [(n, t, S[n["id"]]["diverted"] * t["rate"])
                  for n in model["nodes"] for t in outflows(n)]
-        for n, to, amount in seeds:
+        for n, t, amount in seeds:
             s = S[n["id"]]
             seed = min(amount, max(0, s["diverted"]))
             if seed <= 0:
                 continue
-            out = inject(to, seed, 1)
+            out = inject(t["to"], seed, 1)
+            ev(n["id"], t["to"], out, "transfer", 1, t)
             s["diverted"] -= out; s["kickedOut"] += out
-            S[to]["fromKickbackDirect"] += out
-    return S
+            S[t["to"]]["fromKickbackDirect"] += out
+    return S, events
 
 
 def make_run(model):
-    S = simulate(model, clean=False)
+    S, events = simulate(model, clean=False)
     out = []
     for n in model["nodes"]:
         c, _ = _rates(n, False)
@@ -124,12 +146,11 @@ def make_run(model):
         row.update(S[n["id"]])
         row["effectiveCapture"] = c
         row["schemes"] = schemes
-        row["effectiveCapture"] = c
-        row["schemes"] = schemes
         inc = n.get("externalIncome", [])
         dirty_income = any(t.get("linked") or (t.get("return") is not None and t["return"] > 0.25) for t in inc)
         mk = n.get("markup", 0)
         extra = mk < -0.1 or n.get("phantom", 0) > 0.05 or any(t.get("chunks", 1) >= 5 for t in n.get("transfers", []))
         row["label"] = "corrupt" if (n.get("corrupt") or schemes or c > 0.08 or dirty_income or extra) else "clean"
         out.append(row)
-    return {"appropriation": model["appropriation"], "nodes": out}
+    return {"appropriation": model["appropriation"], "nodes": out, "events": events}
+

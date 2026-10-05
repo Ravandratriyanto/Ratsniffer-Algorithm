@@ -27,24 +27,44 @@ def entities_and_truth(run: dict):
     return entities, truth
 
 
-def build_ledger(run: dict, validators: int = 5):
+def build_ledger(run: dict, validators: int = 5, journal=None):
     cons = Consortium(n=validators, difficulty=2)
+    nodes = {n["id"]: n for n in run["nodes"]}
     txns = []
+    seq = 0
+
+    # One transaction per movement of money. A transfer edge can fire many times
+    # as kickbacks cascade, so this is driven by the sim's event log, not by the
+    # node list -- a node or an edge is not a transaction, each firing is.
+    for e in run.get("events", []):
+        if e["from"] is None:
+            continue                       # the appropriation itself has no sender
+        meta = {"kind": e["kind"], "depth": e["depth"], "ev_seq": e["seq"]}
+        if "rate" in e:
+            meta["rate"] = e["rate"]
+        if "chunks" in e:
+            meta["chunks"] = e["chunks"]
+        if e["kind"] == "funding":
+            meta["award_date"] = nodes.get(e["to"], {}).get("awardDate")
+        txns.append(Transaction(sender=e["from"], recipient=e["to"], amount=e["amount"],
+                                type=TxType.KICKBACK if e["kind"] == "transfer" else TxType.FUNDING,
+                                ts=float(seq), meta=meta))
+        seq += 1
+
     for n in run["nodes"]:
-        if n.get("parent"):
-            txns.append(Transaction(sender=n["parent"], recipient=n["id"], amount=n["fromParent"],
-                                    type=TxType.FUNDING, meta={"award_date": n.get("awardDate")}))
-        if n.get("markup"):
-            txns.append(Transaction(sender=n.get("parent"), recipient=n["id"], amount=n["fromParent"],
-                                    type=TxType.PROCUREMENT, good_id="contract:" + n["id"], qty=1,
-                                    unit_price=round(1 + n["markup"], 4)))
-        for t in n.get("transfers", []):
-            txns.append(Transaction(sender=n["id"], recipient=t["to"], amount=n["kickedOut"],
-                                    type=TxType.KICKBACK, meta={"rate": t["rate"]}))
         for inc in n.get("externalIncome", []):
             txns.append(Transaction(sender=inc["source"], recipient=n["id"], amount=inc["amount"],
-                                    type=TxType.ORACLE,
+                                    type=TxType.ORACLE, ts=float(seq),
                                     meta={"return": inc.get("return"), "linked": bool(inc.get("linked"))}))
-    cons.propose(txns)
+            seq += 1
+
+    if journal:
+        for t in txns:
+            journal.record(t)
+
+    ok, votes = cons.propose(txns)
+    if journal:
+        journal.commit(cons.validators[0].chain.last.hash, [t.txid for t in txns], votes, ok)
+
     entities, truth = entities_and_truth(run)
     return cons, entities, truth

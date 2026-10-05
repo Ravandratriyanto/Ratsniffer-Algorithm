@@ -7,3 +7,7 @@ CLAUDE.md
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# Journal output + local venv
+journal.jsonl
+.venv/
