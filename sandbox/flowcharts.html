@@ -65,8 +65,8 @@
 
   <rect x="28"  y="64"  width="188" height="150" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
   <text x="36" y="56" fill="#8b93a3" font-size="12">① make the world</text>
-  <rect x="238" y="64"  width="182" height="150" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
-  <text x="246" y="56" fill="#8b93a3" font-size="12">② record it</text>
+  <rect x="238" y="64"  width="182" height="250" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <text x="246" y="56" fill="#8b93a3" font-size="12">② record it — and agree</text>
   <rect x="640" y="60"  width="214" height="260" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
   <text x="648" y="52" fill="#8b93a3" font-size="12">③ catch the cheats</text>
   <rect x="40"  y="356" width="612" height="156" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
@@ -78,8 +78,8 @@
   <line x1="854" y1="166" x2="896" y2="188" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#ar)"/>
   <line x1="214" y1="406" x2="234" y2="406" stroke="#a371f7" stroke-width="1.5" marker-end="url(#arP)"/>
   <line x1="390" y1="406" x2="410" y2="404" stroke="#a371f7" stroke-width="1.5" marker-end="url(#arP)"/>
-  <path d="M500 370 V322 H20 V140 H26" fill="none" stroke="#a371f7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arP)"/>
-  <text x="206" y="314" fill="#a371f7" font-size="11.5">new fake schemes feed the world</text>
+  <path d="M500 370 V340 H20 V140 H26" fill="none" stroke="#a371f7" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arP)"/>
+  <text x="206" y="332" fill="#a371f7" font-size="11.5">new fake schemes feed the world</text>
   <path d="M986 220 V336 H650 V214 H658" fill="none" stroke="#d29922" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arA)"/>
   <text x="712" y="330" fill="#d29922" font-size="11.5">learning loop · misses → retrain</text>
 
@@ -95,14 +95,24 @@
   </a>
 
   <a href="#c-ingest">
-    <rect x="250" y="92" width="158" height="46" rx="7" fill="#171a21" stroke="#58a6ff"/>
-    <text x="260" y="114" fill="#e6e9ef" font-size="13" font-weight="600">ingest.py</text>
-    <text x="260" y="130" fill="#8b93a3" font-size="11">reads the world</text>
+    <rect x="250" y="90" width="158" height="42" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="110" fill="#e6e9ef" font-size="13" font-weight="600">ingest.py</text>
+    <text x="260" y="124" fill="#8b93a3" font-size="11">reads the world</text>
   </a>
   <a href="#c-chain">
-    <rect x="250" y="150" width="158" height="44" rx="7" fill="#171a21" stroke="#58a6ff"/>
-    <text x="260" y="171" fill="#e6e9ef" font-size="13" font-weight="600">chain.py</text>
-    <text x="260" y="186" fill="#8b93a3" font-size="11">tamper-proof record</text>
+    <rect x="250" y="140" width="158" height="42" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="160" fill="#e6e9ef" font-size="13" font-weight="600">chain.py</text>
+    <text x="260" y="174" fill="#8b93a3" font-size="11">tamper-proof pages</text>
+  </a>
+  <a href="#c-consensus">
+    <rect x="250" y="190" width="158" height="42" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="210" fill="#e6e9ef" font-size="13" font-weight="600">consensus.py</text>
+    <text x="260" y="224" fill="#8b93a3" font-size="11">a committee agrees</text>
+  </a>
+  <a href="#c-journal">
+    <rect x="250" y="240" width="158" height="42" rx="7" fill="#171a21" stroke="#58a6ff"/>
+    <text x="260" y="260" fill="#e6e9ef" font-size="13" font-weight="600">journal.py</text>
+    <text x="260" y="274" fill="#8b93a3" font-size="11">every payment, in order</text>
   </a>
 
   <rect x="450" y="106" width="152" height="50" rx="25" fill="#171a21" stroke="#2a2f3a"/>
@@ -117,7 +127,7 @@
   <a href="#c-analyzer">
     <rect x="654" y="118" width="186" height="40" rx="7" fill="#171a21" stroke="#e5534b"/>
     <text x="664" y="138" fill="#e6e9ef" font-size="13" font-weight="600">analyzer.py</text>
-    <text x="664" y="151" fill="#8b93a3" font-size="11">who sticks out</text>
+    <text x="664" y="151" fill="#8b93a3" font-size="11">who sticks out · clusters</text>
   </a>
   <a href="#c-laundering">
     <rect x="654" y="166" width="186" height="40" rx="7" fill="#171a21" stroke="#e5534b"/>
@@ -149,8 +159,8 @@
   </a>
   <a href="#c-adv">
     <rect x="236" y="384" width="152" height="44" rx="7" fill="#171a21" stroke="#a371f7"/>
-    <text x="246" y="405" fill="#e6e9ef" font-size="13" font-weight="600">breed.py</text>
-    <text x="246" y="420" fill="#8b93a3" font-size="11">mix + mutate</text>
+    <text x="246" y="405" fill="#e6e9ef" font-size="13" font-weight="600">adversary · breed</text>
+    <text x="246" y="420" fill="#8b93a3" font-size="11">invent · mix · mutate</text>
   </a>
   <a href="#c-adv">
     <rect x="412" y="372" width="170" height="68" rx="8" fill="#171a21" stroke="#a371f7"/>
@@ -191,11 +201,28 @@
     <p>Change one number and its seal changes, which breaks the next page's seal, and the next… Crack one and they all crack. So nobody can quietly rewrite the past. \(H\) is a "fingerprint" function that's practically impossible to fake.</p>
   </a>
 
+  <a class="card b" id="c-consensus" href="#c-consensus">
+    <h3>②⁺ Agreed by a committee</h3>
+    <div class="files">consensus.py</div>
+    <p>One treasury writing its own ledger could simply lie. So a panel of independent validators — central bank, audit office, judiciary, civil society — each keep their own copy, and a block is only written if <em>enough of them agree</em> (a quorum, here 5 of N):</p>
+    \[ \text{committed} \iff \#\text{votes} \ge \text{quorum} \]
+    <p>A lone bad validator can't rewrite history: its altered chain fails verification, so the honest majority's copy stays the canonical one — and a forged rewrite gets zero votes. This is what turns a "tamper-proof file" into a <em>decentralised ledger</em> no single party controls.</p>
+  </a>
+
+  <a class="card b" id="c-journal" href="#c-journal">
+    <h3>②⁺ Every payment, in order</h3>
+    <div class="files">journal.py</div>
+    <p>Alongside the sealed pages we keep a flat running list: one line per <em>movement of money</em>, each line sealed to the one before it — the same chaining trick, standalone.</p>
+    <p>The subtle part: a single kickback edge <em>fires many times</em> as money cascades around a loop. An edge on the diagram is not a transaction — each firing is. So the list is written from the money <em>actually moving</em>, not from the picture of who-pays-whom. Nothing is missed and nothing invented:</p>
+    \[ \text{one line} = \text{one firing}, \qquad \textstyle\sum(\text{into } X) = \text{received}_X \]
+    <p>A cross-check then confirms the flat list and the sealed pages tell the exact same story.</p>
+  </a>
+
   <a class="card b" id="c-ingest" href="#c-ingest">
     <h3>Seeing vs. knowing</h3>
     <div class="files">ingest.py</div>
     <p>We split the world in two: what an outsider could <em>see</em> (the public money trail) and the secret <em>answer key</em> (who was actually corrupt).</p>
-    <p>The detector is only allowed to read the public part. We keep the answer key hidden and use it afterward to grade it — like marking a test without letting the student peek at the answers.</p>
+    <p>The detector is only allowed to read the public part. We keep the answer key hidden and use it afterward to grade it — like marking a test without letting the student peek at the answers. Ingest mints one transaction per <em>firing</em> and commits them through the committee above.</p>
   </a>
 
   <a class="card r" id="c-gates" href="#c-gates">
@@ -207,11 +234,13 @@
   </a>
 
   <a class="card r" id="c-analyzer" href="#c-analyzer">
-    <h3>③b Who sticks out</h3>
+    <h3>③b Who sticks out — and who hides in a crowd</h3>
     <div class="files">analyzer.py</div>
     <p>Compare each office to its neighbours. If everyone keeps about 5% but one keeps 33%, that one stands out. We measure "how much it stands out" so a couple of oddballs can't fool us:</p>
     \[ z \;=\; \frac{x - \text{typical}}{\text{typical wobble}} \]
-    <p>Big \(z\) = suspicious. The catch: if <em>everybody</em> is crooked, then "typical" is crooked too, and nobody looks odd. That blind spot is exactly what the next box fixes.</p>
+    <p>Big \(z\) = suspicious. The catch: if <em>everybody</em> is crooked, "typical" is crooked too and nobody looks odd.</p>
+    <p><strong>Death by a thousand cuts.</strong> A careful thief keeps every single number <em>under</em> the alarm — a tiny invoice padding here, a tiny one there. No one payment trips a rule. So we stop judging offices one at a time and look at them <em>together</em>: a whole cluster of sibling offices each padding a little is itself the tell, even when none would be flagged alone.</p>
+    \[ \text{many small deviations under one parent} \;\Rightarrow\; \text{flag the cluster} \]
   </a>
 
   <a class="card r" id="c-laundering" href="#c-laundering">
@@ -250,11 +279,11 @@
 
   <a class="card p" id="c-adv" href="#c-adv">
     <h3>⑤ The cheating bot</h3>
-    <div class="files">schemes.py · breed.py · arena.py</div>
+    <div class="files">schemes.py · adversary.py · breed.py · arena.py</div>
     <p>A bot invents fake corruption to try to slip past the detector. It keeps the schemes that got away, <em>mixes and tweaks</em> them (like breeding animals for a trait), and tries again — slowly evolving toward the detector's weak spots.</p>
     <p>So the detector and the bot are rivals in a tug-of-war:</p>
     \[ \min_{\text{detector}}\ \ \max_{\text{cheater}}\ \ (\text{crooks missed}) \]
-    <p>One side tries to miss as few crooks as possible; the other tries to hide as many as possible. Fighting makes both of them sharper.</p>
+    <p>The sharpest cheater isn't the loud one — it's the <em>mimic</em>: a scheme that looks like ordinary business, every number tucked under the alarm. The bot evolves toward <em>profitable disguise</em>, and that's exactly what forces the detector to learn aggregate tells (clusters, subtree totals) instead of per-payment rules.</p>
   </a>
 
 </div>
@@ -296,6 +325,14 @@
     <p class="files">caught by: gates.price_band (two-sided) · oracle phantom goods</p>
   </a>
 
+  <a class="card r" id="t-disguised" href="#t-disguised">
+    <h3>Disguised skim <span style="color:#8b93a3;font-weight:400">· death by a thousand cuts</span></h3>
+    <p>Instead of one obvious theft, spread it thin. Many offices each skim a sliver and pad invoices just under the fair-price band — no loop, no related party, nothing transferred off-tree. Each one, on its own, looks like ordinary business and sails through every single-payment rule.</p>
+    <p><strong>Tell:</strong> not any one office, but a <em>cluster</em> of siblings all deviating the same small way at once.</p>
+    \[ \text{many } r_i \in (1,\ \text{hi}) \ \text{under one parent} \]
+    <p class="files">caught by: analyzer.markup_cluster (aggregate)</p>
+  </a>
+
   <a class="card g" id="t-integration" href="#t-integration">
     <h3>Integration — the clean cover <span style="color:#8b93a3;font-weight:400">· integration</span></h3>
     <p>Bring the money back as "clean" — fake business revenue, or "investment returns". A real investor's money has a traceable, independent, market-rate source; a launderer's doesn't.</p>
@@ -309,10 +346,12 @@
 
 <footer>
   The story in one line: <code>sandbox.html / world.py</code> make a world →
-  <code>ingest.py</code> + <code>chain.py</code> record it →
-  <code>gates · analyzer · ml · oracle</code> judge it →
+  <code>ingest.py</code> + <code>chain.py</code> + <code>consensus.py</code> + <code>journal.py</code> record it
+  (a committee agrees, every firing logged) →
+  <code>gates · analyzer · laundering · ml · oracle</code> judge it →
   <code>sniff.py</code> grades the result →
-  the <code>cheating bot</code> invents harder worlds and feeds its wins back so the detector keeps learning.
+  the <code>cheating bot</code> invents harder worlds — now <em>disguised</em>, not loud —
+  and feeds its wins back so the detector keeps learning.
   Open with <code>xdg-open flowcharts.html</code> (needs internet once, to load the math font).
 </footer>
 </body>

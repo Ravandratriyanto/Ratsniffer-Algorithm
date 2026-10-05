@@ -144,6 +144,14 @@ function outflows(n){
 }
 
 // Single top-down pass: standard tree flow, no kickback re-injection yet.
+let EVENTS = [];
+function logEv(from, to, amount, kind, depth, t){
+  if (amount <= 0) return;
+  const e = {seq: EVENTS.length, from, to, amount, kind, depth};
+  if (t){ e.rate = t.rate; if (t.chunks) e.chunks = t.chunks; }
+  EVENTS.push(e);
+}
+
 function baseFlow(n, received, S, clean){
   const {c, r} = rates(n, clean);
   const ch = kids.get(n.id);
@@ -171,7 +179,7 @@ function baseFlow(n, received, S, clean){
   S.set(n.id, {received, diverted, retained, down, delivered, trueDelivered,
                kickedOut: 0, fromParent: received, fromKickback: 0, fromKickbackDirect: 0});
   const tot = shareTotal(ch);
-  for (const k of ch) baseFlow(k, down * k.share / tot, S, clean);
+  for (const k of ch){ const amt = down * k.share / tot; logEv(n.id, k.id, amt, "funding", 0); baseFlow(k, amt, S, clean); }
 }
 
 // Second pass: route a node's kickback into its target as a fresh inflow,
@@ -207,7 +215,7 @@ function injectFlow(nodeId, amount, S, clean, depth){
 
   const tot = shareTotal(ch);
   let passed = 0;
-  for (const k of ch) passed += injectFlow(k.id, down * k.share / tot, S, clean, depth+1);
+  for (const k of ch){ const amt = down * k.share / tot; const got = injectFlow(k.id, amt, S, clean, depth+1); logEv(nodeId, k.id, got, "funding", depth+1); passed += got; }
   const stuck = down - passed;                 // a hop the guard refused
   if (stuck > 0){ s.retained += stuck; s.down -= stuck; }
 
@@ -219,6 +227,7 @@ function injectFlow(nodeId, amount, S, clean, depth){
       const seed = Math.min(diverted * t.rate, Math.max(0, s.diverted));
       if (seed <= 0) continue;
       const out = injectFlow(t.to, seed, S, clean, depth+1);
+      logEv(nodeId, t.to, out, "transfer", depth+1, t);
       s.diverted -= out; s.kickedOut += out;
       S.get(t.to).fromKickbackDirect += out;
     }
@@ -228,6 +237,8 @@ function injectFlow(nodeId, amount, S, clean, depth){
 
 function simulate(clean){
   const S = new Map();
+  EVENTS = [];
+  logEv(null, root.id, MODEL.appropriation, "appropriation", 0);
   baseFlow(root, MODEL.appropriation, S, clean);
   if (!clean){
     // Snapshot the seeds first: injections mutate `diverted`, so reading it
@@ -235,12 +246,13 @@ function simulate(clean){
     const seeds = [];
     for (const n of MODEL.nodes)
       for (const t of outflows(n))
-        seeds.push({n, to:t.to, amount: S.get(n.id).diverted * t.rate});
-    for (const {n, to, amount} of seeds){
+        seeds.push({n, t, to:t.to, amount: S.get(n.id).diverted * t.rate});
+    for (const {n, t, to, amount} of seeds){
       const s = S.get(n.id);
       const seed = Math.min(amount, Math.max(0, s.diverted));
       if (seed <= 0) continue;
       const out = injectFlow(to, seed, S, clean, 1);
+      logEv(n.id, to, out, "transfer", 1, t);
       s.diverted -= out; s.kickedOut += out;
       S.get(to).fromKickbackDirect += out;
     }
@@ -955,7 +967,7 @@ function makePlan(){
     const ids = [newId(), newId(), newId(), newId()];
     return ids.map((id, k) => () => {
       if (k === 0) demote();
-      MODEL.nodes.push({id, name:'Vendor '+(k+1), parent:host.id, share:1, capture:.04+Math.random()*.035, retain:.02, audit:.4, markup:Math.random()*.12, corrupt:true});
+      MODEL.nodes.push({id, name:'Vendor '+(k+1), parent:host.id, share:1, capture:.04+Math.random()*.035, retain:0, audit:.4, markup:Math.random()*.12, frontline:true, corrupt:true});
       buildIndex(); selected = id;
     });
   }
@@ -1134,7 +1146,8 @@ panel.addEventListener('click', e => {
         schemes,
         label: n.corrupt || schemes.length || r.c > 0.08 || dirtyIncome || extra ? 'corrupt' : 'clean'
       };
-    })
+    }),
+    events: EVENTS
   };
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(run, null, 2)], {type:'application/json'}));

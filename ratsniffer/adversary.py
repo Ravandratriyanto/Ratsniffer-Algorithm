@@ -41,31 +41,25 @@ def random_scheme(rng=None, max_nodes=9):
     return {"appropriation": approp, "nodes": nodes}
 
 
-def disguised_scheme(rng=None, n_clean=6, n_dirty=5):
+def disguised_scheme(rng=None, n_dept=3, n_clean=5, n_dirty=5):
     rng = rng or random.Random()
     approp = rng.choice([1e12, 5.9e12, 6e12])
     nodes = [dict(id="n0", name="Budget", parent=None, share=1.0,
-                  capture=rng.uniform(0, 0.01), retain=rng.uniform(0, 0.02),
-                  audit=rng.uniform(0.3, 0.5))]
-    clean_ids = ["n0"]
+                  capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5))]
+    depts = []
     i = 1
+    for _ in range(n_dept):
+        nodes.append(dict(id=f"n{i}", name=f"Dept {i}", parent="n0", share=rng.uniform(0.5, 1.0),
+                          capture=rng.uniform(0, 0.02), retain=rng.uniform(0, 0.03), audit=rng.uniform(0.3, 0.5)))
+        depts.append(f"n{i}"); i += 1
     for _ in range(n_clean):
-        parent = rng.choice(clean_ids)
-        nodes.append(dict(id=f"n{i}", name=f"Dept {i}", parent=parent,
-                          share=rng.uniform(0.3, 1.0),
-                          capture=rng.uniform(0, 0.03), retain=rng.uniform(0, 0.05),
-                          audit=rng.uniform(0.3, 0.5)))
-        clean_ids.append(f"n{i}")
+        nodes.append(dict(id=f"n{i}", name=f"Service {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
+                          capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True))
         i += 1
     for _ in range(n_dirty):
-        parent = rng.choice(clean_ids)
-        nodes.append(dict(id=f"n{i}", name=f"Vendor {i}", parent=parent,
-                          share=rng.uniform(0.3, 1.0),
-                          capture=rng.uniform(0.04, 0.075),
-                          retain=rng.uniform(0, 0.04),
-                          audit=rng.uniform(0.3, 0.5),
-                          markup=rng.uniform(0.0, 0.12),
-                          corrupt=True))
+        nodes.append(dict(id=f"n{i}", name=f"Vendor {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
+                          capture=rng.uniform(0.04, 0.075), retain=0, audit=rng.uniform(0.3, 0.5),
+                          markup=rng.uniform(0.0, 0.12), frontline=True, corrupt=True))
         i += 1
     return {"appropriation": approp, "nodes": nodes}
 

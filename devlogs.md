@@ -164,3 +164,28 @@ Measured: `run.json` plus one return edge (`recipients -> consortium`, rate 0.4)
 - **`entities_and_truth`'s `transfers_out`** still pairs every transfer with `n["kickedOut"]`, so `off_tree_transfer` can compute `frac > 1` on a multi-transfer node. Independent of the journal; worth fixing on its own.
 - `journal.jsonl` is deleted at the start of each `sniff.py` run (appending across runs would stack). Key it per run if history is wanted.
 - Still no tests, still no `requirements.txt`. Actual third-party imports across the tree are **networkx, numpy, sklearn** only — `start.sh`'s fallback also installs pandas, scipy, pytest.
+
+## Session log — 2026-10-05
+
+### The thread: the mimicry adversary, start to finish
+The Oct-4 "big realization" — the adversary is a cartoon villain — got built out this session. Headline number: **disguised-corruption recall 71% → 77% → 83%**, with `sniff.py` holding **100% / 100%** on the loud schemes throughout (no regression).
+
+### Shipped
+- **`disguised_scheme` (`adversary.py`).** Mimicry generator: theft kept under every threshold, labeled `corrupt` by intent so it still counts. First cut planted under-threshold leaves (capture < 0.08, markup < 15%, no `linkedOwner`, no transfers) — verified 5 planted / 0 tripping gates+analyzer, i.e. invisible to the rule layer by construction.
+- **Sandbox parity.** ✦ Scheme gained a **`disguised`** pattern. Fixed a real JS→Python **label drift**: the export computed `label` without checking `n.corrupt`, so a browser-exported disguised node came out `clean` — and `ingest` trusts the exported label verbatim. Added `n.corrupt ||` to match `world.py:133`.
+- **`demo_mimicry.py` rewritten.** Was committed broken (`X, y = []. []`, `entities+and_truth`, `random_schemes`, eval nested inside the 40-iter training loop). Clean rewrite: train once, evaluate once. Deleted the dead root `adversary/` copy (syntax-broken, imported by nothing).
+- **Sandbox event log.** Ported `world.py`'s per-firing `ev()` into the sandbox `simulate()` (`logEv` + 5 log points + export emits `events`). Verified **identical** to `world.py` on a kickback-cycle model — 19 events, same kind breakdown, completeness residual **1.14e-13** both sides. Closes the "browser export mints an empty ledger" drift the Oct-4 session flagged.
+- **`flowcharts.html` remade.** Added `consensus.py` + `journal.py` boxes/cards, the "each firing is a transaction" + completeness idea, `markup_cluster` ("death by a thousand cuts") in the analyzer card, `adversary.py` + the mimic framing in self-play, and a new "Disguised skim" tell card. Links/SVG validated.
+
+### Aggregate detectors — what worked and what didn't
+- **`markup_cluster` (works).** Flags a cluster (≥2) of sibling children each padding invoices *under* the 15% band — the cluster is the tell, no single child trips. **71% → 77%.** Zero false positives on clean (clean markup is exactly 0, so the band `(1, 1.15)` excludes them).
+- **Generator fix — `hold_ratio` was saturated (works).** Root cause of the recall ceiling: disguised leaves were non-frontline dead-ends keeping **100%** of inflow — *identical* to clean leaves, so the `hold_ratio` feature couldn't separate them; markup was the only handle. Made leaves **frontline**: clean deliver ~everything (hold ≈ 0.01), dirty deliver minus the skim (hold ≈ 0.068). That turns the skim into a visible signal. **77% → 83%.**
+- **`holdratio_cluster` (net-negative — recorded, not kept as a win).** Same cluster idea on the delivery gap. **Finding: it adds nothing and costs precision.** Full-stack recall stays **83%** (ML's `hold_ratio` feature already catches those), while analyzer-only precision on disguised worlds drops to **64%** (47 FPs); even restricted to leaves it's **71% / 34 FPs** — clean depts and edge leaves drift above the `0.02` floor, which a fixed threshold can't separate from the dirty tail (0.01 vs 0.068 distributions overlap). **Lesson: once a signal is an ML feature, a redundant fixed-threshold hand-rule on the same signal adds noise, not recall.** Decision pending — drop it, or rework peer-relative (per-parent MAD) instead of a global floor.
+
+### Honest limit found
+Remaining ~17% missed are vendors that rolled **both** markup ≈ 0 **and** capture at the floor → hold ≈ 0.03–0.04, sitting inside the clean distribution. No per-node signal can separate those; it's the genuine floor of what the observable ledger exposes.
+
+### Open / next
+- **Decide `holdratio_cluster`'s fate** (drop vs. peer-relative rework).
+- **Commit** — the whole session is uncommitted (adversary, sandbox events, demo, analyzer, flowcharts, `start.bat`).
+- Still carrying from Oct-4: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no tests, no `requirements.txt`.
