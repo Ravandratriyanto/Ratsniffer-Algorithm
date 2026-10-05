@@ -3,3 +3,7 @@ CLAUDE.md
 
 # Claude Code session logs (keep transcripts out of git)
 .claude/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
