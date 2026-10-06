@@ -967,7 +967,12 @@ function makePlan(){
     const ids = [newId(), newId(), newId(), newId()];
     return ids.map((id, k) => () => {
       if (k === 0) demote();
-      MODEL.nodes.push({id, name:'Vendor '+(k+1), parent:host.id, share:1, capture:.04+Math.random()*.035, retain:0, audit:.4, markup:Math.random()*.12, frontline:true, corrupt:true});
+      const n = {id, name:'Vendor '+(k+1), parent:host.id, share:1, capture:.005, retain:0, audit:.4, frontline:true, corrupt:true};
+      const trick = k % 3;
+      if (trick === 0) n.capture = .04+Math.random()*.035;
+      else if (trick === 1) n.markup = .04+Math.random()*.08;
+      else n.externalIncome = [{source:'market', amount:MODEL.appropriation*(.02+Math.random()*.03), return:.18+Math.random()*.068, linked:false}];
+      MODEL.nodes.push(n);
       buildIndex(); selected = id;
     });
   }

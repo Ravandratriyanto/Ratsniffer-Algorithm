@@ -66,6 +66,29 @@ def holdratio_cluster(entities, floor=0.02, min_cluster=2):
             flags.append(Flag(c, "holdratio_cluster", min(1.0, h / 0.15),
                               f"under-delivers {h * 100:.0f}% — sub-threshold but part of a cluster"))
     return flags
+def subtree_leakage(entities, node_lo=0.005, node_hi=0.15, min_depth=3):
+    ch = _children(entities)
+    par = {c: p for p in ch for c in ch[p]}
+    def skims(i):
+        e = entities[i]; r = e["received"]
+        return bool(r) and i in ch and node_lo < (r - e["paid_out"]) / r < node_hi
+    S = {i for i in entities if skims(i)}
+    down = {}
+    def chain_down(i):
+        if i not in down:
+            down[i] = 1 + max((chain_down(c) for c in ch.get(i, []) if c in S), default=0)
+        return down[i]
+    def chain_up(i):
+        p = par.get(i)
+        return 1 + chain_up(p) if p in S else 1
+    flags = []
+    for i in S:
+        if chain_up(i) + chain_down(i) - 1 >= min_depth:
+            e = entities[i]; r = e["received"]; k = (r - e["paid_out"]) / r
+            flags.append(Flag(i, "subtree_leakage", min(1.0, chain_down(i) / 6),
+                              f"skims {k * 100:.1f}% inside a chain of >={min_depth} consecutive leaking tiers"))
+    return flags
 
 def run_analyzer(entities):
-    return retention_anomaly(entities) + markup_cluster(entities) + holdratio_cluster(entities)
+    return retention_anomaly(entities) + markup_cluster(entities) + subtree_leakage(entities)
+    

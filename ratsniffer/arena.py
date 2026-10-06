@@ -6,6 +6,7 @@ from ml import Learner, detect
 from features import build_features
 from oracle import attest, reconcile, wealth_reconciliation
 from schemes import ghost, kickback, embezzle, ektp, launder
+from adversary import disguised_scheme, cascade_scheme
 from breed import breed
 from laundering import run_laundering
 
@@ -54,15 +55,25 @@ def measure(models, learner, cov, rng):
     return rec, prec
 
 
+def fitness(run, truth, flagged):
+    stolen = {n["id"]: n.get("diverted", 0.0) for n in run["nodes"]}
+    corrupt = [i for i in truth if truth[i]["label"] == "corrupt"]
+    if not corrupt:
+        return 0.0
+    value = sum(stolen[i] for i in corrupt)
+    frac_clean = sum(i not in flagged for i in corrupt) / len(corrupt)
+    return value * frac_clean
+
+
 def main():
     rng = random.Random(0)
     orng = random.Random(1)
-    holdout = [ektp(), launder()]
-    pop = [ghost(), kickback(), embezzle()]
+    holdout = [ektp(), launder(), disguised_scheme(rng), cascade_scheme(rng)]
+    pop = [ghost(), kickback(), embezzle(), disguised_scheme(rng), cascade_scheme(rng)]
     learner = Learner()
     X, y = [], []
 
-    print(f"seed: ghost, kickback, embezzle   |   holdout: e-KTP, laundering   |   audit coverage: {COVERAGE:.0%}\n")
+    print(f"seed: ghost, kickback, embezzle, disguised, cascade   |   holdout: e-KTP, laundering, disguised, cascade   |   audit coverage: {COVERAGE:.0%}\n")
     r0, p0 = measure(holdout, None, 0, orng)
     ro, po = measure(holdout, None, COVERAGE, orng)
     print(f"rules only             holdout recall {r0:.0%}  precision {p0:.0%}")
@@ -75,14 +86,14 @@ def main():
         for m in pop:
             run, ent, truth, Xi, yi = xy(m)
             flagged = detect_all(run, ent, learner, COVERAGE, orng)
-            missed = sum(truth[i]["label"] == "corrupt" and i not in flagged for i in ent)
-            scored.append((missed, m))
+            evaded = fitness(run, truth, flagged)
+            scored.append((evaded, m))
             X += Xi
             y += yi
         learner.train(X, y)
         scored.sort(key=lambda s: -s[0])
         rec, prec = measure(holdout, learner, COVERAGE, orng)
-        print(f"{rnd:>5}  {len(pop):>3}  {len(X):>10}    recall {rec:>4.0%} prec {prec:>4.0%}    hid {scored[0][0]}")
+        print(f"{rnd:>5}  {len(pop):>3}  {len(X):>10}    recall {rec:>4.0%} prec {prec:>4.0%}    top_evaded_profit {scored[0][0]:.2e}")
         parents = [m for _, m in scored[:6]]
         pop = parents + breed(parents, rng, n=24)
 

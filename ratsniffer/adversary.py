@@ -41,7 +41,7 @@ def random_scheme(rng=None, max_nodes=9):
     return {"appropriation": approp, "nodes": nodes}
 
 
-def disguised_scheme(rng=None, n_dept=3, n_clean=5, n_dirty=5):
+def disguised_scheme(rng=None, n_dept=4, n_clean=30, n_dirty=3):
     rng = rng or random.Random()
     approp = rng.choice([1e12, 5.9e12, 6e12])
     nodes = [dict(id="n0", name="Budget", parent=None, share=1.0,
@@ -53,40 +53,81 @@ def disguised_scheme(rng=None, n_dept=3, n_clean=5, n_dirty=5):
                           capture=rng.uniform(0, 0.02), retain=rng.uniform(0, 0.03), audit=rng.uniform(0.3, 0.5)))
         depts.append(f"n{i}"); i += 1
     for _ in range(n_clean):
-        nodes.append(dict(id=f"n{i}", name=f"Service {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
-                          capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True))
-        i += 1
+        node = dict(id=f"n{i}", name=f"Service {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
+                    capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True)
+        if rng.random() < 0.4:
+            node["externalIncome"] = [{"source": "market", "amount": approp * rng.uniform(0.01, 0.04),
+                                       "return": rng.uniform(0.04, 0.15), "linked": False}]
+        nodes.append(node); i += 1
     for _ in range(n_dirty):
-        nodes.append(dict(id=f"n{i}", name=f"Vendor {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
-                          capture=rng.uniform(0.04, 0.075), retain=0, audit=rng.uniform(0.3, 0.5),
-                          markup=rng.uniform(0.0, 0.12), frontline=True, corrupt=True))
-        i += 1
+        node = dict(id=f"n{i}", name=f"Vendor {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),
+                    capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True, corrupt=True)
+        trick = rng.choice(["skim", "markup", "launder"])
+        if trick == "skim":
+            node["capture"] = rng.uniform(0.04, 0.075)
+        elif trick == "markup":
+            node["markup"] = rng.uniform(0.04, 0.12)
+        else:
+            node["externalIncome"] = [{"source": "market", "amount": approp * rng.uniform(0.02, 0.05),
+                                       "return": rng.uniform(0.18, 0.248), "linked": False}]
+        nodes.append(node); i += 1
     return {"appropriation": approp, "nodes": nodes}
-
 
 def mutate(model, rng=None):
     rng = rng or random.Random()
     m = {"appropriation": model["appropriation"],
          "nodes": [dict(n, transfers=[dict(t) for t in n.get("transfers", [])]) for n in model["nodes"]]}
-    pool = m["nodes"][1:] or m["nodes"]
-    n = rng.choice(pool)
+    nodes = m["nodes"]
+    pool = nodes[1:] or nodes
     op = rng.random()
-    if op < 0.3:
-        n["capture"] = rng.uniform(0, 0.5)
-    elif op < 0.5:
-        n["markup"] = rng.uniform(0, 0.8)
-    elif op < 0.65:
-        n["audit"] = rng.uniform(0.02, 0.45)
-    elif op < 0.8:
-        if "linkedOwner" in n:
-            del n["linkedOwner"]
-        else:
-            n["linkedOwner"] = "insider"
+    if op < 0.25:
+        n = rng.choice(pool)
+        n["capture"] = rng.uniform(0.03, 0.078)
+        n["transfers"] = []
+        n.pop("linkedOwner", None)
+        n["corrupt"] = True
+    elif op < 0.45:
+        n = rng.choice(pool)
+        n["markup"] = rng.uniform(0.0, 0.14)
+        n["corrupt"] = True
+    elif op < 0.6:
+        n = rng.choice(pool)
+        n["audit"] = rng.uniform(0.3, 0.5)
+        n.pop("linkedOwner", None)
+    elif op < 0.75:
+        nid = f"x{rng.randrange(10**9)}"
+        nodes.append(dict(id=nid, name=f"Vendor {nid}", parent=rng.choice(nodes)["id"], share=rng.uniform(0.3, 1.0),
+                          capture=rng.uniform(0.03, 0.078), retain=0, audit=rng.uniform(0.3, 0.5),
+                          markup=rng.uniform(0.0, 0.14), frontline=True, corrupt=True))
+    elif op < 0.88:
+        nid = f"x{rng.randrange(10**9)}"
+        nodes.append(dict(id=nid, name=f"Service {nid}", parent=rng.choice(nodes)["id"], share=rng.uniform(0.3, 1.0),
+                          capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True))
     else:
-        tgt = rng.choice(m["nodes"])
-        if tgt["id"] != n["id"]:
-            n.setdefault("transfers", []).append({"to": tgt["id"], "rate": rng.uniform(0.2, 0.7)})
-    for n in m["nodes"]:
-        if not n["transfers"]:
-            del n["transfers"]
+        rng.choice(pool)["capture"] = rng.uniform(0, 0.5)
+    for n in nodes:
+        if not n.get("transfers"):
+            n.pop("transfers", None)
     return m
+
+def cascade_scheme(rng=None, depth=6, fanout=1):
+    rng = rng or random.Random()
+    approp = rng.choice([1e12, 5.9e12, 6e12])
+    nodes = [dict(id="n0", name="Budget", parent=None, share=1.0,
+                  capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5))]
+    i = 1
+    spine = "n0"
+    for d in range(depth):
+        nid = f"n{i}"; i += 1
+        nodes.append(dict(id=nid, name=f"Tier {d+1}", parent=spine, share=5.0,
+                          capture=rng.uniform(0.015, 0.03), retain=0,
+                          audit=rng.uniform(0.3, 0.5), corrupt=True))
+        for _ in range(fanout):
+            nodes.append(dict(id=f"n{i}", name=f"Service {i}", parent=nid, share=rng.uniform(0.3, 1.0),
+                              capture=rng.uniform(0, 0.01), retain=0,
+                              audit=rng.uniform(0.3, 0.5), frontline=True))
+            i += 1
+        spine = nid
+    nodes.append(dict(id=f"n{i}", name="Endpoint", parent=spine, share=1.0,
+                      capture=rng.uniform(0, 0.01), retain=0, audit=rng.uniform(0.3, 0.5), frontline=True))
+    return {"appropriation": approp, "nodes": nodes}

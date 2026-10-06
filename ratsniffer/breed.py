@@ -1,5 +1,6 @@
 from __future__ import annotations
 import random
+from adversary import mutate
 
 
 def clone(model):
@@ -96,5 +97,6 @@ def breed(pop, rng=None, n=20):
             a, b = rng.sample(pop, 2)
             out.append(crossover(a, b, rng))
         else:
-            out.append(inject_motif(rng.choice(pop), rng))
+            src = rng.choice(pop)
+            out.append(mutate(src, rng) if rng.random() < 0.5 else inject_motif(src, rng))
     return out
