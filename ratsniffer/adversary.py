@@ -16,6 +16,10 @@ def random_scheme(rng=None, max_nodes=9):
                     capture=rng.uniform(0.15, 0.5) if dirty else rng.uniform(0, 0.05),
                     retain=rng.uniform(0, 0.15),
                     audit=rng.uniform(0.02, 0.2) if dirty else rng.uniform(0.2, 0.45))
+        if not dirty and rng.random() < 0.3:
+            node["markup"] = rng.uniform(0.0, 0.06)
+        if not dirty and rng.random() < 0.2:
+            node["linkedOwner"] = "related"
         if dirty and rng.random() < 0.5:
             node["markup"] = rng.uniform(-0.5, 0.8)
         if dirty and rng.random() < 0.4:
@@ -58,6 +62,10 @@ def disguised_scheme(rng=None, n_dept=4, n_clean=30, n_dirty=3):
         if rng.random() < 0.4:
             node["externalIncome"] = [{"source": "market", "amount": approp * rng.uniform(0.01, 0.04),
                                        "return": rng.uniform(0.04, 0.15), "linked": False}]
+        if rng.random() < 0.3:
+            node["markup"] = rng.uniform(0.0, 0.06)
+        if rng.random() < 0.2:
+            node["linkedOwner"] = "related"
         nodes.append(node); i += 1
     for _ in range(n_dirty):
         node = dict(id=f"n{i}", name=f"Vendor {i}", parent=rng.choice(depts), share=rng.uniform(0.3, 1.0),

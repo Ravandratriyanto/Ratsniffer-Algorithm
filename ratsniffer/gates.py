@@ -25,9 +25,11 @@ def price_band(e):
 
 
 def self_deal(e):
-    if e["linked_owner"]:
+    r = e["received"]
+    hold = (r - e["paid_out"]) / r if r else 0
+    if e["linked_owner"] and hold > 0.2:
         return Flag(e["id"], "self_deal", 0.6,
-                    f"related party: {e['linked_owner']}")
+                    f"related party {e['linked_owner']} keeping {hold * 100:.0f}% of inflow")
     return None
 
 

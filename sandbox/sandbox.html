@@ -1149,7 +1149,7 @@ panel.addEventListener('click', e => {
         ...S.get(n.id),
         effectiveCapture: r.c,
         schemes,
-        label: n.corrupt || schemes.length || r.c > 0.08 || dirtyIncome || extra ? 'corrupt' : 'clean'
+        label: n.corrupt || r.c > 0.08 || n.ghost || (n.phantom||0) > 0.05 ? 'corrupt' : 'clean'
       };
     }),
     events: EVENTS

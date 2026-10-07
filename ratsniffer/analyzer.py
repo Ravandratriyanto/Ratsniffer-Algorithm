@@ -90,5 +90,5 @@ def subtree_leakage(entities, node_lo=0.005, node_hi=0.15, min_depth=3):
     return flags
 
 def run_analyzer(entities):
-    return retention_anomaly(entities) + markup_cluster(entities) + subtree_leakage(entities)
+    return retention_anomaly(entities) + subtree_leakage(entities)
     
