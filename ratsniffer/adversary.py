@@ -127,9 +127,10 @@ def cascade_scheme(rng=None, depth=6, fanout=1):
     spine = "n0"
     for d in range(depth):
         nid = f"n{i}"; i += 1
+        dirty = rng.random() < 0.5
         nodes.append(dict(id=nid, name=f"Tier {d+1}", parent=spine, share=5.0,
-                          capture=rng.uniform(0.015, 0.03), retain=0,
-                          audit=rng.uniform(0.3, 0.5), corrupt=True))
+                          capture=rng.uniform(0.015, 0.03) if dirty else rng.uniform(0, 0.005),
+                          retain=0, audit=rng.uniform(0.3, 0.5), corrupt=dirty))
         for _ in range(fanout):
             nodes.append(dict(id=f"n{i}", name=f"Service {i}", parent=nid, share=rng.uniform(0.3, 1.0),
                               capture=rng.uniform(0, 0.01), retain=0,

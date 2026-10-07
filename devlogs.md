@@ -209,3 +209,116 @@ gates → `retention_anomaly` → `markup_cluster` → depth-gated `subtree_leak
 - **Commit** — the whole session is uncommitted (adversary, sandbox events, demo, analyzer, arena, breed, flowcharts, `start.bat`).
 - Could still push the adversary: deepen the cascade for 10%+, or the audit-blind-spot exploit (hide in the un-audited fraction).
 - Still carrying from Oct-4: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no tests, no `requirements.txt`.
+
+---
+
+## Session log — 2026-10-07
+
+### Repo state first
+Local `main` was 2 commits behind with uncommitted edits to `analyzer.py`, `arena.py`, `ml.py`. Took upstream wholesale (`git reset --hard origin/main`) — now level at **`4379b04`**. The `analyzer.py`/`arena.py` edits were superseded by the upstream versions anyway; the `ml.py` edit had **no upstream counterpart and is gone**, nothing in git ever saw it. Noting it in case something is missed later.
+
+### The eval harness, characterized
+`eval.py` (100 lines) shipped in **`4379b04` "Evals and Benchmarks"** — a commit that touched 7 files and **not this log**, which is why there was no record of it. It is the answer to "highest ROI: no tests" from the Oct-4 problem list: not pytest, but a real measurement harness.
+
+Covers, against the project's required-checks list: **label shuffle, single-feature baseline, conditional leak audit, world-seed splits, held-out scheme family, PR-AUC + FPR**. Does *not* cover: the conservation assertion (that lives in the journal work) and generator-seed reproducibility — `dataset(seed=0)` is fixed, so the reported ± is spread across *splits*, not across world seeds. `ml.py:22` does fit IsolationForest on `X[y == 0]` only, so that check passes.
+
+Measured this session — 1755 rows / 90 worlds / 20.0% corrupt:
+
+```
+label-shuffle x10    ROC-AUC 0.492 +/- 0.170  [0.238, 0.759]
+seed-split x10       ROC-AUC 0.895 +/- 0.011
+                     PR-AUC  0.631 +/- 0.027
+                     FPR     0.106 +/- 0.021
+held-out cascade     ROC-AUC 0.123   PR-AUC 0.272   FPR 0.000
+```
+
+No single feature separates — top is `hold_ratio` at 0.792, nothing trips the 0.95 WARN, so the simulator isn't trivially easy. Shuffle mean lands on 0.5: no leak. **But the shuffle spread is the thing to remember** — one draw hit 0.759. A single shuffle run can read as either a leak or clean by luck; only the mean over K means anything, and that matters before anyone quotes one run as evidence.
+
+### The finding: held-out cascade transfer is *inverted*
+**ROC-AUC 0.123 with FPR 0.000** is not weak transfer — it is worse than random. Trained on random+disguised, the ML flags **nothing** on cascade and ranks cascade thieves as *cleaner* than clean nodes. Two causes, both measured:
+
+- **The whole family sits below the learned cut.** Training `hold_ratio`: clean mean 0.052, corrupt mean 0.359. Cascade's *maximum* `hold_ratio` across all 420 rows is **0.0207**. Every cascade node, thief included, lands in trained-clean territory.
+- **The structural features flip sign across families.** Per-family AUC:
+
+```
+feature            random  disguised  cascade
+hold_ratio          0.676      0.825    1.000
+is_leaf             0.619      0.571    0.062
+num_children        0.352      0.429    1.000
+received_share      0.373      0.383    0.875
+```
+
+  `is_leaf`, `num_children` and `received_share` all invert between the training families and cascade. With `hold_ratio` scaled into irrelevance, those three drive the ranking — in the wrong direction. That is the 0.123.
+
+**The information is fully present.** Within cascade, `hold_ratio` separates *perfectly* by a single cut (corrupt min 0.00779 > clean max 0.00690). Features are absolute, not peer-relative — a deliberate choice recorded back in the `features.py` note — and this is the bill for it. **Lesson: absolute features can't transfer across scheme families whose money scales differ by an order of magnitude; the signal survives, the threshold doesn't.** Next thing to try: within-world normalization of `hold_ratio`.
+
+### And the caution that cuts the other way
+`hold_ratio` AUC **1.000** and `num_children` AUC **1.000** *within* cascade is exactly the "one feature separates => too easy" warning. The crosstab says why:
+
+```
+cascade              corrupt   clean
+  internal              180      30
+  leaf                    0     210
+```
+
+**Zero corrupt leaves.** In a cascade world "is internal" is very nearly "is corrupt" by construction — `fanout=1` spine, every spine node dirty. So the **cascade full-stack recall 100% standalone** figure below is partly a generator artifact, not detector skill. Read it with an asterisk, and consider giving `cascade_scheme` clean internal nodes so the structure stops being the label.
+
+### Verified
+- `sniff.py` unchanged at baseline: 5 validators (quorum 4), canonical chain 2 blocks, journal 6 entries (5 txn) verify OK, cross-check agrees, **precision 100% / recall 100%**. The two upstream commits touched `adversary.py`, `analyzer.py`, `eval.py`, `features.py`, `gates.py`, `world.py` with no regression here.
+- All five `eval.py` metric lines, the per-family AUC table, the cascade crosstab, and the `hold_ratio` ceiling/separability figures — read off real runs, not estimated.
+
+### Corrections to earlier entries
+- The Oct-5 "Open / next" line **"Commit — the whole session is uncommitted"** is stale: it all landed in `029721b "Adversary Strenghthening"` (Oct 6) + `4379b04 "Evals and Benchmarks"`.
+- **"Still no tests"** is now half-true. No pytest and nothing tracked matching `test`, but `eval.py` covers 6 of the 8 required checks — the reason tests were top of the problem list is largely addressed. The remaining gap is unit-level (the recurring-typo class of bug), not evaluation-level.
+- Both the mimicry session and the one before it are headed **`## Session log — 2026-10-05`**. The second is really the mimicry session; worth disambiguating if the dates get used for anything.
+- The **cascade recall 100%** claim needs the generator-artifact asterisk above.
+
+### Both fixes shipped
+Two edits, verified end to end:
+- **`features.py`** — new 11th feature **`hold_rank`**: the within-world rank of `hold_ratio`, average-ranked across ties, appended after the absolute vector. Tie-handling is not decoration — dead-end leaves share `hold_ratio` exactly, and ranking them arbitrarily would make the feature depend on dict ordering.
+- **`adversary.py`** — `cascade_scheme` tiers now dirty at **p=0.5** instead of universally (`corrupt=dirty`, clean tiers capture ≤ 0.005), so cascade worlds finally contain clean internal nodes. `corrupt=False` is safe to pass: `world.py:149` short-circuits to the capture test, which a clean tier fails.
+
+`eval.py` on the edited tree — every figure matched the scratchpad prediction made before applying:
+
+```
+dataset              1755 rows, 253 corrupt (14.4%)   <- was 20.0%; degeneracy gone
+label-shuffle x10    ROC-AUC 0.470 +/- 0.195          <- no leak introduced
+seed-split x10       ROC-AUC 0.936 +/- 0.009          <- was 0.895
+                     PR-AUC  0.686 +/- 0.044          <- was 0.631
+                     FPR     0.144 +/- 0.009          <- was 0.106
+held-out cascade     ROC 0.982  PR 0.860  FPR 0.130   <- was 0.123 / 0.272 / 0.000
+hold_rank alone      AUC 0.820                        <- no WARN
+```
+
+`sniff.py` bit-identical to baseline throughout — it imports neither `features` nor `ml`, so the 100/100 was never going to move. Degeneracy confirmed gone: cascade internal nodes **82 corrupt / 128 clean** (was 180/30), `is_leaf` AUC inside cascade 0.062 → 0.189.
+
+Note the generator fix *alone* made every within-distribution number look worse (ROC 0.895 → 0.860, PR 0.631 → 0.521). That is not a regression — it removed a free signal the model had been leaning on. **Numbers from before the generator fix are not comparable to numbers after it.**
+
+### Rank transfers, robust z does not
+Tried **median+MAD z-score first and it did nothing** — held-out cascade 0.243 against a 0.245 baseline. Cause: in `random` worlds enough nodes share an identical `hold_ratio` that MAD collapses to ~0, and the z values blow out to **-6.7e+08**. An unbounded normaliser inherits the family's scale problem instead of removing it. Rank is bounded to [0,1] by construction, so it crosses families. **Lesson: the normaliser has to be bounded, not merely robust** — the fixed-threshold lesson again, one level up.
+
+### The caveat that matters more than the fix: generalization is NOT fixed
+0.982 held-out came in *above* the 0.936 within-distribution number, which is backwards — out-of-family should be harder. So each family was held out in turn instead of only cascade:
+
+```
+held-out random     ROC 0.763  PR 0.601  FPR 0.877
+held-out disguised  ROC 0.678  PR 0.131  FPR 0.130
+held-out cascade    ROC 0.982  PR 0.860  FPR 0.130
+```
+
+**`eval.py:95` hardcodes cascade as the held-out family, and cascade is the easiest of the three** (`hold_rank` alone scores AUC 0.978 inside it). The benchmark has been reporting its most flattering draw. Held-out `random` flags **88% of clean nodes**; held-out `disguised` sits at PR-AUC 0.131. "Generalization solved" would be false.
+
+Why the trick works on cascade and not elsewhere: cascade thieves are consistently the top holders in their own world. The deeper sign conflict is untouched — **all 90 disguised thieves are leaves, all 82 cascade thieves are internal**, so `is_leaf` means opposite things in the two families. Same shape as the original inversion finding, one layer down.
+
+### Bug injection — both caught
+- Planted the ground-truth label as a feature → single-feature `AUC 1.000 <-- WARN`, leak audit `100.0% <-- LEAK` on 253 rows, split ROC 1.000. The audits fire.
+- Nested the rank pass inside the per-node loop (each node ranked only against nodes seen so far) → held-out cascade ROC 0.982 → 0.919, **PR 0.860 → 0.589**. ROC barely moved and would have passed a casual glance; **PR-AUC is what caught it.** Worth remembering which metric to watch when a change looks fine.
+
+### Open / next
+- **Make `eval.py` report all three held-out draws, not just cascade.** The single hardcoded draw is now known to be the flattering one. Changes the benchmark, so it is a decision, not a cleanup.
+- **The `is_leaf` sign conflict is the live problem** — disguised thieves all leaves, cascade thieves all internal. Not yet ablated, so "causal" is inferred, not verified.
+- **Held-out `random` FPR 0.877** — flagging 88% of clean nodes is the worst number in the project right now, and it was invisible while only cascade was reported.
+- **Reproducibility check still missing** — `dataset()` takes a `seed` but `main()` only ever calls it with 0.
+- **Re-run `arena.py` / `demo_mimicry.py`** — both call `build_features`, so they picked `hold_rank` up automatically and every number recorded from them is stale. The arena especially: better cross-family generalization is exactly what its fitness is trying to defeat.
+- **Add `ext_income_frac` / `max_return` coverage to the stack** — still the laundered-income hole; both active in 397 rows at only 8.3% corrupt-rate, i.e. carrying little signal as built.
+- Still carrying: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no `requirements.txt`, no unit tests.

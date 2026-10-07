@@ -1,5 +1,5 @@
 from __future__ import annotations 
-FEATURES_NAMES = ["hold_ratio", "markup", "linked_owner", "off_tree_frac", "is_leaf","received_share", "num_children", "ext_income_frac", "max_return", "linked_income"]
+FEATURES_NAMES = ["hold_ratio", "markup", "linked_owner", "off_tree_frac", "is_leaf","received_share", "num_children", "ext_income_frac", "max_return", "linked_income", "hold_rank"]
 
 def build_features(entities):
     children = {}
@@ -28,4 +28,17 @@ def build_features(entities):
             linked_inc, 
 
         ]
-    return feats 
+    ids = list(feats)
+    hold = {i: feats[i][0] for i in ids}
+    ranked = sorted(ids, key=lambda i: hold[i])
+    denom = max(len(ids) - 1, 1)
+    k = 0
+    while k < len(ranked):
+        j = k
+        while j + 1 < len(ranked) and hold[ranked[j + 1]] == hold[ranked[k]]:
+            j += 1
+        avg = (k + j) / 2.0 / denom
+        for t in range(k, j + 1):
+            feats[ranked[t]].append(avg)
+        k = j + 1
+    return feats
