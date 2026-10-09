@@ -1,6 +1,6 @@
 import random
 import numpy as np
-from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.metrics import roc_auc_score, average_precision_score, roc_curve
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from world import make_run
@@ -66,7 +66,29 @@ def leak_audit(X, y):
         rate = y[m].mean()
         warn = "  <-- LEAK" if n >= 10 and (rate > 0.98 or rate < 0.02) else ""
         print(f"  {name:<16} active in {n:>4} rows, corrupt-rate {rate:.1%}{warn}")
+def recall_at_fpr(yte, p, target):
+    fpr, tpr, _ = roc_curve(yte, p)
+    ok = fpr <= target
+    return tpr[ok].max() if ok.any() else 0.0
 
+def held_out(X, y, f, label):
+    print(f"\n[held-out family, single draw] {label}  (recall at a usable false-alarm budget is the honest metric)")
+    for name in FAMILIES:
+        tr, te = f != name, f == name
+        p = fit_score(X[tr], y[tr], X[te]); yte = y[te]
+        r, pr, fp = metrics(yte, p)
+        r5, r10 = recall_at_fpr(yte, p, 0.05), recall_at_fpr(yte, p, 0.10)
+        print(f"  {name:<10} ROC-AUC {r:.3f}  PR-AUC {pr:.3f}  FPR {fp:.3f}  recall@FPR5% {r5:.3f}  recall@FPR10% {r10:.3f}")
+
+def honest_dataset(n_worlds, seed):
+    rng = random.Random(seed)
+    X = []
+    for _ in range(n_worlds):
+        ent, truth = entities_and_truth(make_run(disguised_scheme(rng, n_dirty=0)))
+        feats = build_features(ent)
+        assert all(truth[i]["label"] != "corrupt" for i in ent), "honest world planted a corrupt node"
+        X.extend(feats[i] for i in ent)
+    return np.array(X, float)
 def main():
     X, y, w, f = dataset(n_worlds=30, seed=0)
     print(f"dataset: {len(y)} rows, {int(y.sum())} corrupt ({y.mean():.1%}), {len(set(w.tolist()))} worlds\n")
@@ -86,15 +108,15 @@ def main():
     for s in range(K):
         ysh = ytr.copy(); np.random.RandomState(s).shuffle(ysh)
         sh.append(roc_auc_score(yte, fit_score(Xtr, ysh, Xte)))
-
+    held_out(X, y, f, "(train on the other two, test on this one)")
     print(f"\n[label-shuffle x{K}, fixed split]  ROC-AUC {ms(sh)}  (expect ~0.5; higher => leak)")
     print(f"[seed-split x{K} world-splits]     ROC-AUC {ms(accs['roc'])}")
     print(f"                                   PR-AUC  {ms(accs['pr'])}")
     print(f"                                   FPR     {ms(accs['fpr'])}")
 
-    tr, te = f != "cascade", f == "cascade"
-    r, p, fp = metrics(y[te], fit_score(X[tr], y[tr], X[te]))
-    print(f"[held-out cascade, single draw]    ROC-AUC {r:.3f}  PR-AUC {p:.3f}  FPR {fp:.3f}")
+    Xh = honest_dataset(n_worlds=30, seed=1)
+    ph = fit_score(X, y, Xh)
+    print(f"\n[honest-only worlds]  {len(Xh)} nodes, 0 corrupt  flagged@0.5 {(ph >= 0.5).mean():.1%}  (the real false-alarm rate — no scheme to find)")
 
 if __name__ == "__main__":
     main()

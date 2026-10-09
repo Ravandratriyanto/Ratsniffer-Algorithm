@@ -48,7 +48,17 @@ def structuring(e):
             return Flag(e["id"], "structuring", min(1.0, ch / 20), f"split a transfer into {ch} sub-threshold chunks")
         return None
 
-GATES = [price_band, self_deal, off_tree_transfer, structuring]
+CASHOUT_TOL = 0.08
+
+def dark_cashout(e):
+    r = e["received"] or 1.0
+    unauthorized = (e["cashed_out"] - e["delivered"]) / r
+    if unauthorized > CASHOUT_TOL:
+        return Flag(e["id"], "dark_cashout", min(1.0, unauthorized),
+                    f"cashed out {unauthorized * 100:.0f}% of inflow beyond authorized delivery")
+    return None
+
+GATES = [price_band, self_deal, off_tree_transfer, structuring, dark_cashout]
 
 
 def run_gates(entities) -> list[Flag]:

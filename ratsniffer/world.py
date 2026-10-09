@@ -127,6 +127,9 @@ def simulate(model, clean=False):
             ev(n["id"], t["to"], out, "transfer", 1, t)
             s["diverted"] -= out; s["kickedOut"] += out
             S[t["to"]]["fromKickbackDirect"] += out
+    for nid, s in S.items():
+        s["cashedOut"] = s["delivered"] + s["diverted"]
+        ev(nid, "__bank", s["cashedOut"], "cashout", 0)
     return S, events
 
 
@@ -134,6 +137,9 @@ def make_run(model):
     S, events = simulate(model, clean=False)
     out = []
     for n in model["nodes"]:
+        s = S[n["id"]]
+        bal = s["diverted"] + s["retained"] + s["down"] + s["delivered"] + s["kickedOut"]
+        assert abs(s["received"] - bal) <= max(1.0, s["received"]) * 1e-6, f"conservation broke at {n['id']}"
         c, _ = _rates(n, False)
         schemes = []
         if [t for t in n.get("transfers", []) if t.get("rate", 0) > 0]:

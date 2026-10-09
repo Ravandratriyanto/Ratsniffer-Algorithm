@@ -11,15 +11,13 @@ from typing import Any, Optional
 def _sha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
-
 class TxType(str, Enum):
     FUNDING = "funding"
     PROCUREMENT = "procurement"
     KICKBACK = "kickback"
+    CASHOUT = "cashout"
     ORACLE = "oracle"
     FLAG = "flag"
-
-
 @dataclass
 class Transaction:
     recipient: str
