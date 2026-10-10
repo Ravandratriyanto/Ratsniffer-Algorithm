@@ -322,3 +322,163 @@ Why the trick works on cascade and not elsewhere: cascade thieves are consistent
 - **Re-run `arena.py` / `demo_mimicry.py`** — both call `build_features`, so they picked `hold_rank` up automatically and every number recorded from them is stale. The arena especially: better cross-family generalization is exactly what its fitness is trying to defeat.
 - **Add `ext_income_frac` / `max_return` coverage to the stack** — still the laundered-income hole; both active in 397 rows at only 8.3% corrupt-rate, i.e. carrying little signal as built.
 - Still carrying: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no `requirements.txt`, no unit tests.
+
+---
+
+## Session log — 2026-10-08
+
+### The thread: from idealistic claims to a measured curve
+Took the ML from "100% precision/recall" framing to a fully measured **catch-rate-vs-false-alarm curve**. Two confirmed levers found (drop sign-flipping features; train on honest worlds), and the detector reframed as a **prioritiser, not a clean classifier**. Nothing about the model got *idealistically better* — the **honesty of the measurement** did, which then exposed how oversold the old numbers were.
+
+### Shipped
+- **`eval.py`** — leave-one-family-out now reports **all three families**, not the hardcoded cascade (the flattering draw). Added **`recall@FPR5%/10%`** via `roc_curve` — the honest operating metric. Added **`honest_dataset`** (fully-clean worlds via `disguised_scheme(rng, n_dirty=0)`, with an `assert` that no corrupt label slips in) + a `[honest-only worlds]` FPR line = the real false-alarm rate.
+- **`features.py`** — dropped the three structural-position features (`is_leaf`, `received_share`, `num_children`) that **sign-flip across families**; vector 11→8 (`hold_rank` kept, still ranks on index 0 = `hold_ratio`). Dead `children`/`total`/`nkids` removed.
+- **`report.py`** — per-entity **ML reasoning** (feature attribution: top-3 by `w·x` off the trained logistic). Then the **deployed fix**: trains on **scheme + 20 honest worlds**, and sets the CORRUPT threshold to **`TAU` = the 10%-false-alarm operating point calibrated on clean worlds**, not an arbitrary 0.5.
+- **`sandbox.html`** — **📄 Report overlay** (Transactions / Ground truth / Simulated detector flags), flagged nodes red with plain-English reasoning; **◈ How it works** link to the flowcharts.
+- **`flowcharts.html`** — new **eval** card (recall@budget, honest worlds, the curve) and **report** card (reasoning, honest training, calibrated threshold); footer updated. `start.sh` now opens the flowcharts alongside the sandbox.
+
+### Verified — the numbers (all read off real runs this session, single draw seed 0)
+Honest held-out picture **after** the features fix:
+```
+family     ROC     recall@FPR5%  recall@FPR10%
+random     0.662     0.000         0.000
+disguised  0.752     0.311         0.544
+cascade    0.989     0.866         0.988
+```
+**The finding: ROC massively oversold it.** ROC 0.76 hid recall **0.000 at a usable false-alarm budget** — two of three families catch nothing you can act on. (Before the features fix: random 0.763/0.000, disguised 0.678/0.000, cascade 0.982/1.000.)
+
+### The sign-flip experiment — diagnosis confirmed
+Dropping `is_leaf`/`num_children`/`received_share` lifts **disguised recall@FPR10% 0.000 → 0.544** (logistic) / **0.656** (forest). A linear model can't represent a sign flip (leaf = corrupt in one family, innocent in another), so it averages them to mush — that *is* the zero. **The model is the minor lever:** forest with *all* features still gives disguised 0.000, so drop-structural is necessary and the tree is a small bonus. **`random` stays on the floor (≤0.062) in every config** — a different, unsolved problem neither lever touches. **Cascade's perfect score collapses under forest (1.000 → 0.671)** — more evidence it's the generator artifact, since a real signal wouldn't vanish on a model swap.
+
+### The within-family cost of the fix
+Seed-split (within-distribution): **ROC 0.936 → 0.891, PR-AUC 0.686 → 0.570, FPR 0.144 → 0.209.** The structural features carried real in-family signal; the trade is cross-family recall bought with within-family precision — and it *hurt* `random` transfer too (ROC 0.763 → 0.662). Not a free win; a genuine judgment call about which family matters.
+
+### The real false-alarm rate
+`[honest-only worlds]` (1050 clean nodes, zero fraud): **flagged@0.5 = 27.8%** — *higher* than the 20.9% measured in scheme-worlds. Measuring FPR where thieves exist understated it. An auditor following this into a clean ministry would be sent to >1 in 4 innocent offices.
+
+### The operating curve — there is no quiet-and-thorough point
+Threshold calibrated on honest worlds to a false-alarm budget (scheme-only model):
+```
+FPR 20% → recall 85.0%     FPR 5% → recall 33.6%
+FPR 10% → recall 56.6%     FPR 2% → recall 25.7%
+```
+The 92.9% recall at the default 0.5 was *bought* with 28.7% false alarms. Pull false alarms to a tolerable 5% and you catch barely a third. The detector's real quality is this whole curve.
+
+### Training on honest worlds — a rare clean win
+Adding honest worlds to training **lowers FPR and raises recall at the same time** (no trade): FPR **28.7% → 23.7%** (+30 honest) while recall@FPR10% rises **0.699 → 0.743**. The combined curve sits uniformly above scheme-only (+3.5–5.3 pts recall at every budget): FPR10% **56.6% → 61.1%**, FPR5% **33.6% → 37.2%**. The model finally sees legitimate-but-odd *clean* examples and stops flagging them.
+
+### Deployed — the false positive erased
+`report.py` on `run.json`, honest-trained at **`TAU` = 0.68**: **Kemendagri** (flagged CORRUPT at p=0.56 earlier this session under threshold 0.5) now reads **p=0.17 → clean**, with all three real thieves still caught (Recipients 0.97, Vendors 0.96, Consortium 0.61 via its rule flag). One world, so a demonstration the fix works *here*, not a generalization claim.
+
+### The reframing (the point of the session)
+The detector is a **prioritiser for auditors, not a clean classifier.** Usable band **FPR 10–20% → recall 61–88%** (mixed, buoyed by easy cascade; worse on an unseen family). "100% precision/recall" was the old idealism; the curve is the truth.
+
+### Review round 2 — honesty pass on the page and the report
+A reviewer pushed on `flowcharts.html` and `report.py`; fixed, all VERIFIED:
+- **Held-out curve now on the page with CIs** (honest-trained, K=5 draws): held-out `disguised` recall@FPR 5/10/20% = **0.49±0.05 / 0.57±0.06 / 0.63±0.05**; `cascade` **0.93±0.04 / 0.99±0.01 / 1.00±0.00** (artifact); **`random` 0.00±0.00 at every budget**. Labelled held-out, not in-family — the page no longer contradicts itself.
+- **Held-out honest-world FPR = 0.10±0.01** — calibrate the 10% threshold on one set of clean worlds, measure on another; the budget generalises out of sample. Replaced the single-FP anecdote on the report card.
+- **`report.py` `why` now standardised** — `StandardScaler` before the logistic, so `push_j = w_j·(x_j−μ_j)/σ_j` is a genuine log-odds contribution *relative to the average node*, not from a meaningless zero. Reranks reasons: rare features like `off_tree_frac` now surface strongly when active (+17.55 on Vendors).
+- **Scorecard card** drops "push both to 100%" for the precision floor `precision = rπ/(rπ + f(1−π))` and `precision@k` as the honest headline.
+- **Sign-flip reframed** as a generator confound ("our generators leaked structure into the labels"), not an insight about real fraud.
+- Shuffle card now says *train on shuffled labels, test on true, averaged*; consensus says *five simulated validators in one process* (no overclaim); ledger buckets each defined (now backed by a `make_run` conservation assert — see the off-ramp work below).
+
+### Modelling the off-ramp — funding→cash, made detectable
+The one place "follow the money" stopped: the cash-out / dark zone. The Bank was visual-only; `delivered`/`retained`/`diverted` were identical ledger entries that just stopped. Built it out end to end:
+- **Sim** (`world.py` + `sandbox.html` parity): every node emits a `cashout` event to the Bank, `cashedOut = delivered + diverted(net)` (authorised delivery + skim withdrawn as cash). Added the **project's first conservation assert** in `make_run` (`received == diverted+retained+down+delivered+kickedOut`); holds across 40 generated worlds. Sandbox mirrors it (JS `cashedOut`, `cashout` events, a "Cashed out" footer stat) — JS↔Python parity kept.
+- **Ledger** (`chain.py`/`ingest.py`): `TxType.CASHOUT` minted per event; `cashed_out`/`delivered` exposed as observable fields.
+- **Detector** (`gates.py` `dark_cashout`): flags `(cashed_out − delivered)/received > 0.08` — cash leaving the rails beyond authorised delivery.
+
+**Verified:** `dark_cashout` over 120 worlds (all three families) = **100% precision, 26% recall, 0 false positives** (92 caught / 0 FP). On `run.json` (regenerated from `schemes.ektp()` via `make_run`, **0.0 drift** on existing fields): fires on Recipients 53%, Consortium 23%, Vendors 22%; `sniff.py` still **100/100**; journal 6→11 entries; cross-check agrees.
+
+**The feature that didn't survive measurement:** `cashout_frac` as an ML feature was a **family-dependent confound** — single-feature AUC **0.376** (dominated by legitimate frontline delivery, not skim), and it tanked held-out transfer (disguised recall@FPR10% 0.544→**0.089**, cascade 0.988→**0.000**). Same disease as `is_leaf`. Measured, rejected, **reverted** — the cash-out signal belongs in the gate (which strips the delivery component), not the model. The "measure before you ship" loop caught it.
+
+**Honest limit:** `dark_cashout` is high-precision *partial* (26% recall) — it catches only thieves who withdraw skim as cash beyond authorised delivery, by construction. And `cashedOut = delivered + diverted` is the clean first model with **no legitimate operational-cash noise**, so it's somewhat idealised (though the 0.376 feature AUC shows it is not a trivial label leak). The *probabilistic* off-ramp model (scope option 4) was not built.
+
+### The `random`-family floor — lifted (generator confound, not a smarter detector)
+The session's last big open problem: held-out `random` stuck at **0.00 recall at every false-alarm budget**, untouched by the sign-flip and honest-training levers. Diagnosed it (scratch `randdiag.py`), and it was the sign-flip disease one level deeper — **not** signal-absence:
+- Within random the signal *is* present (per-feature AUC `hold_rank 0.69`, `hold_ratio 0.68`, `off_tree_frac 0.68`).
+- But the model (trained on disguised+cascade) scored random's **clean** nodes at **0.563** — over-flagging everything, so any usable-FPR threshold excluded the corrupt → 0 recall.
+- Cause: **`random_scheme`'s clean leaves were non-frontline dead-ends that *retain* their inflow**, while `disguised`/`cascade` clean leaves are `frontline` and *deliver* it. So `hold_ratio` meant "corrupt" in two families and "normal dead-end" in the third — a generator confound, the `is_leaf` story again.
+
+**Fix (`adversary.py`):** mark `random_scheme`'s leaf nodes `frontline` (deliver, `retain=0`) — exactly the fix applied to disguised earlier in the project. Clean leaves now look alike across all three families.
+
+**Measured (K=5, honest-trained):** random recall@FPR5% **0.00 → 0.65±0.14**, @FPR10% **0.00 → 0.75±0.10**; the model's score on random's clean nodes dropped **0.563 → 0.308**. Bonus: within-distribution seed-split ROC **0.891 → 0.935**. No leak introduced (label-shuffle 0.47, no single-feature WARN, honest FPR still 0.10±0.01).
+
+**Honest framing:** this is a **generator-consistency fix, not a detector improvement** — we made the simulator's clean nodes behave realistically (spend, not hoard), removing a confound we had planted. The benchmark got fairer; the model didn't get smarter. **All prior random-world numbers are now stale** (the generator changed), and random's CI is wide (±0.14) — directional, not precise.
+
+### Coverage matrix + the bred false-alarm finding (`coverage.py`)
+Replaced the single held-out recall number with a **coverage matrix** — mechanism × layer (rules / ML / oracle / combined), recall of corrupt nodes. Built `coverage.py` (committed).
+
+**Synthetic single-mechanism worlds** (recall): the union is complete *except mimicry* —
+```
+                 rules   ML   oracle  combined
+retention        100    100    100      100
+markup           100     56    100      100
+self-deal        100     92    100      100
+phantom goods      0      0    100      100
+external income    0    100    100      100
+pass-through ring 100    100     28      100
+disguised (mimic)  0     69      0       69
+```
+Each layer owns a column of blind spots and the others cover them — rules = structural tells, ML = relative retention, oracle = no-on-ledger-trace (phantom). The only uncovered row is **disguised/mimicry (69%)**, theft tuned under every threshold.
+
+**External validity (the real test of same-author bias):** the ML, trained only on the 3 synthetic families, was run against **replayed real cases** (`schemes.py`: ektp/launder/ghost/kickback/embezzle) and **40 bred variants** (`breed.py` crossover/motif of those). Recall: real cases 100% each (ghost oracle-only, as expected); **bred x40: rules 90 / ML 91 / oracle 98 / combined 99%**. Recall genuinely transfers to schemes it never saw.
+
+**The finding that reframes it — bred false-alarm rate:** the 99% recall comes at a **37% false-alarm rate** on bred/real worlds (rules 14, ML 28, oracle 2, combined 37). The ML was calibrated to 10% FPR on *synthetic honest worlds whose clean nodes deliver* (hold≈0); real/bred worlds have clean nodes that **retain** (embezzle's unit keeps 90%, Kemendagri holds), which look identical to small skimmers → over-flagged. **Recall transfers; calibration does not.** This is the direct cost of the earlier "fix random by making clean leaves deliver" — the retention-heavy honest world isn't an edge case, it's where precision lives or dies (the reviewer's point #3, now measured). The oracle is the only layer that stays clean out of distribution (2% FPR).
+
+**The honest headline (eval card rewritten around it):** *the learned component finds corruption even in unseen schemes (99% recall on bred real-case variants), but on realistic worlds where honest offices hold budget it false-flags ~37% of them — out-of-distribution precision collapse, because legitimate retention and skim are indistinguishable without a delivering baseline.*
+
+### Honest limits / still open
+- **Single draws, seed 0** — directions solid (sign-flip reproduces across `eval` and the scratch experiment), magnitudes want K-averaging before quoting.
+- The honest-training fix is wired into **`report.py` only**; `eval.py`'s `dataset()` left pure on purpose so cross-family evaluation isn't polluted.
+- **`random`-family floor — LIFTED** (0.00 → 0.65/0.75 recall@FPR5/10%) via a generator-consistency fix; see the subsection above.
+- **`off_tree_frac` is a near-answer-key** (active 30 rows, 96.7% corrupt) — below the 98% LEAK threshold but watch it.
+- **DONE this session — the report's `why` is now standardised** (`report.py` scales features before the logistic), so `push_j = w_j·(x_j−μ_j)/σ_j` is a log-odds contribution relative to the average node; the earlier raw-`w·x`/`x=0` baseline is fixed.
+- **Reviewer's flowchart math/wording fixes — DONE** (`flowcharts.html`): structuring `$1M → $1.08M` (12×$90k); minimax now `E − λD` (value extracted minus detection penalty, i.e. profitable disguise); robust-z now `(x − median)/(1.4826·MAD)`; ledger buckets made disjoint (`skim kept + retained + sent down + delivered + kicked back`, so kickback isn't double-counted inside skim); layering card gained the honest-pass-through caveat ("flags structure, not intent"); quorum stated as `N=5, quorum=4, tolerates 1 faulty`; gates card no longer says "cheating always breaks a rule" — now distinguishes loud (breaks a rule) from disguised (breaks an aggregate invariant), resolving the contradiction with the mimic card.
+- **Still open from the review:** collinear reasons not yet grouped (`hold_ratio`/`hold_rank` can both appear as "one fact"); IsolationForest novelty flags still have no surrogate explanation (now *stated* on the page, not built); `precision@k` is framed on the page but not computed anywhere yet.
+- **Off-ramp follow-ups (from this session's cash-out work):**
+  - `cashedOut = delivered + diverted` has **no legitimate operational-cash noise** — real clean nodes withdraw cash for payroll/operations too, so the current model makes cash-out cleaner than reality. Adding that noise is the honest next step (and would test whether `dark_cashout` survives it).
+  - **`dark_cashout`'s 26% recall is a hard ceiling by construction** — it only sees skim *withdrawn as cash beyond authorised delivery*; thieves who park skim as a digital balance or stay under the 8% tol are invisible to it.
+  - The **probabilistic off-ramp** (scope option 4 — a per-path risk score for funds going dark) was explicitly **not built**; only the deterministic event + gate.
+  - `run.json` is now regenerated from `schemes.ektp()` via `make_run` (0.0 drift), so the demo carries cash-out — but it is still **one hand-built world**; real quality remains the eval curve.
+- **The new frontier (floor now lifted):** add legitimate operational-cash noise to the off-ramp (does `dark_cashout` survive it?); and the uncomfortable meta-question — most gains this session came from *fixing generator confounds* (`is_leaf`, then random's hoarding leaves), so **how much of the held-out curve is real detection vs. the simulator no longer differing in convenient ways?** Stress-testing that is the real next step.
+- **DONE — `eval.py` now K-averages in the harness.** `held_out_ci(K=5)` runs honest-trained leave-one-family-out + the out-of-sample honest FPR over 5 world draws and prints mean±std; the committed harness reproduces the current CIs (random 0.65±0.14 / 0.75±0.10, disguised 0.48±0.07 / 0.62±0.06, cascade 0.98±0.02 / 0.99±0.01, honest FPR 0.10±0.01) — no more scratch scripts.
+- `off_tree_frac` is still a near-answer-key (active 30 rows, 96.7% corrupt) — below the 98% LEAK threshold but watch it.
+
+---
+
+## Session log — 2026-10-10
+
+### Reality check against external data (first ground truth from outside the loop)
+The project self-grades — we author the schemes, the detectors, and the labels (red team and blue team both on our payroll). Pulled the first *unauthored* data to sanity-check the premise: the **World Bank debarred-firms list** (OpenSanctions, `data/worldbank_debarred.csv`, 1,394 legal entities, confirmed MDB fraud/corruption sanctions).
+
+**What it is / isn't.** Real *labels* (confirmed-corrupt firms), **no features** — names, countries, sanction reasons only; no bids, prices, amounts, or flow. So it **cannot serve as test data** (no recall measurable on it). Its value is **typology** — what kinds of corruption real enforcement catches.
+
+**The reasons, read with discipline:** **578 of 1,420 entries are "cross-debarment"** (type hidden — imported from ADB/EBRD/IDB/AfDB), and the top-12 reasons cover only 1,074, leaving **346 in a long tail (136 distinct strings)**. So **percentages are not quoted** and the readable mix is a lower bound. What *is* readable skews to procurement-process misconduct: the Bank's fraud/corruption/collusion guideline citations (~300), "controlled affiliate of a sanctioned entity" / shell structures (240), explicit fraudulent practice (37). Shells/affiliates (240) + phantom-style fraud map to things we already model; collusion/bid-rigging does not.
+
+**The finding (reworded, not overstated):**
+> Real MDB debarments are dominated by procurement-process misconduct (bidding fraud, collusion, shell/affiliate networks), not budget-flow retention. Our retention signal transfers across synthetic families but has no counterpart in debarment reasons. **Enforcement data is not prevalence data** — these lists show what investigators can prove from documents and bids, not what occurs; quiet budget leakage is under-represented by *selection*, not necessarily rare (public-expenditure-tracking surveys exist precisely because funds leak between levels of government). Next step: add a procurement-integrity module alongside the leakage module.
+
+**Caveats recorded (so nobody re-overstates this later):**
+- "~0% of real corruption" would be wrong — it's ~0% of *this list's readable reasons*, from a selection-biased enforcement source.
+- **Comparison-set caveat:** the Bank sanctions firms in *Bank-financed* projects; national-treasury embezzlement is prosecuted by national agencies and wouldn't appear here. So this says what to *add*, not that the retention module is invalid.
+- "Zero individuals" is a property of the **firm-list** source we pulled, not a claim about individuals.
+- The earlier "single-bidding was opentender's #1 indicator" line came from a web-search summary — **unconfirmed against a primary source, so it is not asserted here.**
+
+**What the data can / can't do:** *can* set the typology mix (which families to simulate) and justify new modules; *cannot* be test data (no bids/prices/graph → no recall).
+
+### Next: a procurement-integrity module (planned, not built)
+A new scheme family with its own held-out test; **expect the retention feature to score near chance there — that is the finding, not a failure.** Keep the leakage module (legitimate second domain; arena/eval/honesty checks all transfer). Signals to simulate: single-bidding rate; bid dispersion `CV = σ/μ` (rigged bids cluster too tightly or space too evenly); winner premium `bid_win/estimate` clustered just under the ceiling; firm rotation (a small set taking turns winning); **shell networks** (shared address/director/owner — graph-shaped, where a GNN fits); short submission windows / last-minute spec changes.
+
+### Data access reality
+- `opentender.eu` per-country dumps carry bid-level data **plus** DIGIWHIST integrity indicators, but the site **403s automated fetch** — needs a manual browser download (the per-country "Data" button). Human-in-the-loop only.
+- `data.open-contracting.org` Indonesia OCDS mirror is fetchable but has **bidder count / method unpopulated** (no bid-level signal) and is 211 MB — not usable for this.
+- World Bank debarred list: fetchable by script (done), but labels-only.
+- To check for downloadable/licensed bid-level data: Indonesian **LPSE/SPSE** portals, EU **TED** bulk open data (EU-wide, large), opentender per-country dumps.
+
+### Procurement-integrity module — scaffolded, honesty check caught it too easy
+Built `procurement.py`: a **new domain** (tenders with bids, not a budget tree). Clean tenders have 3–6 dispersed bids; rigged ones are single-bid or cover-bid collusion (winner just under estimate, losers clustered 0–3% above). Features: `single_bid`, `bid_cv` (σ/μ), `winner_premium` (winner/estimate), `n_bidders`. **Reuses `eval.py`'s honesty harness** (`split_by_world`, `recall_at_fpr`, `ms`, `fit_score`, label-shuffle) — so the discipline transfers to the new domain for free, which was the point.
+
+**Result — not a win, a caught artifact:** `winner_premium` single-feature **AUC 1.000** (WARN), `bid_cv` a perfect *inverse* separator (0.001); held-out ROC/recall **1.000**. The rigged and clean distributions don't overlap, so the 100% is a **generator artifact, not detection** — exactly the "too easy simulator" failure the single-feature check is built to catch, now firing on contact in the new domain. label-shuffle 0.566 ± 0.321 (wild variance on the small buyer splits). **The genuine win is that the honesty machinery transferred and flagged the easiness instantly** — no real recall number is claimed.
+
+**Next on this module:** harden the generator so rigged/clean *overlap* (collusion that doesn't price the winner so obviously under estimate; clean tenders that sometimes cluster) before any held-out number means anything. Add rotation and shell-network (shared address/owner) as graph features. And the standing caveat holds: this is still synthetic — both teams authored by us on a new battlefield; real validation needs the manual opentender download.

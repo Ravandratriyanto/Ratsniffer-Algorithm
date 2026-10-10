@@ -42,6 +42,11 @@ def random_scheme(rng=None, max_nodes=9):
                 if rng.random() < 0.3:
                     t["chunks"] = rng.randint(6, 20)
                 n.setdefault("transfers", []).append(t)
+    parents = {n["parent"] for n in nodes if n.get("parent")}
+    for n in nodes[1:]:
+        if n["id"] not in parents:
+            n["frontline"] = True
+            n["retain"] = 0
     return {"appropriation": approp, "nodes": nodes}
 
 

@@ -20,16 +20,17 @@ def build_features(entities):
             linked_inc,
         ]
     ids = list(feats)
-    hold = {i: feats[i][0] for i in ids}
-    ranked = sorted(ids, key=lambda i: hold[i])
-    denom = max(len(ids) - 1, 1)
-    k = 0
-    while k < len(ranked):
-        j = k
-        while j + 1 < len(ranked) and hold[ranked[j + 1]] == hold[ranked[k]]:
-            j += 1
-        avg = (k + j) / 2.0 / denom
-        for t in range(k, j + 1):
-            feats[ranked[t]].append(avg)
-        k = j + 1
-    return feats
+    denom = max(len(ids)- 1, 1)
+    for col in (0,):
+        vals = {i: feats[i][col] for i in ids}
+        order = sorted(ids, key=lambda i: vals[i])
+        k = 0 
+        while k < len(order):
+            j = k 
+            while j + 1 < len(order) and vals[order[j + 1]] == vals[order[k]]:
+                j += 1
+            avg = (k + j) / 2.0 / denom 
+            for t in range(k, j + 1):
+                feats[order[t]].append(avg)
+            k = j + 1
+    return feats 
