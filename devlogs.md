@@ -321,7 +321,7 @@ Why the trick works on cascade and not elsewhere: cascade thieves are consistent
 - **Reproducibility check still missing** — `dataset()` takes a `seed` but `main()` only ever calls it with 0.
 - **Re-run `arena.py` / `demo_mimicry.py`** — both call `build_features`, so they picked `hold_rank` up automatically and every number recorded from them is stale. The arena especially: better cross-family generalization is exactly what its fitness is trying to defeat.
 - **Add `ext_income_frac` / `max_return` coverage to the stack** — still the laundered-income hole; both active in 397 rows at only 8.3% corrupt-rate, i.e. carrying little signal as built.
-- Still carrying: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no `requirements.txt`, no unit tests.
+- Still carrying: `TxType.PROCUREMENT` unminted, `transfers_out` `frac > 1`, no `requirements.txt`. (**Unit tests: DONE 2026-10-10** — `tests/test_invariants.py`, see the latest entry.)
 
 ---
 
@@ -482,3 +482,34 @@ Built `procurement.py`: a **new domain** (tenders with bids, not a budget tree).
 **Result — not a win, a caught artifact:** `winner_premium` single-feature **AUC 1.000** (WARN), `bid_cv` a perfect *inverse* separator (0.001); held-out ROC/recall **1.000**. The rigged and clean distributions don't overlap, so the 100% is a **generator artifact, not detection** — exactly the "too easy simulator" failure the single-feature check is built to catch, now firing on contact in the new domain. label-shuffle 0.566 ± 0.321 (wild variance on the small buyer splits). **The genuine win is that the honesty machinery transferred and flagged the easiness instantly** — no real recall number is claimed.
 
 **Next on this module:** harden the generator so rigged/clean *overlap* (collusion that doesn't price the winner so obviously under estimate; clean tenders that sometimes cluster) before any held-out number means anything. Add rotation and shell-network (shared address/owner) as graph features. And the standing caveat holds: this is still synthetic — both teams authored by us on a new battlefield; real validation needs the manual opentender download.
+
+### The open problem, investigated — three experiments, mostly negative (`openproblem.py`)
+The 37% false-alarm collapse got three planned experiments. All VERIFIED off a real run; the headline is that the problem is **worse** than a tunable threshold.
+
+**1. Sensitivity curve — the 37% is an assumption, not a constant.** A parameterized `realistic_honest(p_hold)` generator (a share `p_hold` of clean offices legitimately retain 15–40% as reserves; the rest deliver). Union FPR vs `p_hold`:
+```
+p_hold:  0.0   0.1   0.2   0.3   0.5
+FPR:     10%   14%   18%   26%   44%
+```
+The "37%" ≈ `p_hold` 0.4. The false-alarm rate is a steep function of how retention-heavy you assume reality is — so it should be reported as a curve, not a number.
+
+**2. Peer baselines by function — FAILED.** Ranked `hold_ratio` within function (hospital/school/ministry; functions assigned orthogonally to the corrupt label, so no leak). FPR got *worse* at every `p_hold` (10/16/23/32/50% vs global 10/14/18/26/44%), recall unchanged (0.90). **Why:** ranking *within* a group of all-retainers still spreads them 0–1, so the top reservers still rank high and still get flagged. Within-function *ranking* is the wrong fix; the right one is deviation from a function's *expected* hold (per-function baseline / z-score), which this rules in by ruling the ranking out.
+
+**3. Oracle with a budget (precision@k) — the alarming one.** Realistic framing: ML ranks, oracle confirms the top-`k`. On a mixed pool (15% corrupt = bred criminals + realistic honest reservers):
+```
+k=1%  precision 0.22   k=5%  0.04   k=10%  0.02      recall@k ≈ 0.01 everywhere
+```
+**Honest reservers outrank the actual criminals** — because many real/bred thieves steal via markup/collusion with *low* retention, while legitimate reservers hold 15–40%. So the retention-dominated ML ranks the wrong people first; an inspection budget on its top-`k` catches ~1% of corruption — *worse than random*. The "ML ranks, oracle confirms" deployment story **does not work with a retention-dominated ranker.** (Caveat: the exact precision@k depends on the honest/corrupt mix chosen, `p_hold`=0.3; the *direction* — reservers above criminals — is the robust result.)
+
+**What the three establish together:** the open problem isn't a tunable FPR. The ML's one transferable signal (relative retention) is, on realistic mixed populations, **actively anti-correlated with catching non-retention crime** — which is most real crime (the debarment finding). The viable directions are now narrowed: (a) a function-specific *expected-hold* baseline (deviation, not rank), or (b) demote retention and let rules/oracle lead the ranking. A bigger recall number is not the goal; fixing the misranking is.
+
+### Tests — the first real unit net (`tests/test_invariants.py`)
+The oldest item on the problem list (Oct-4: "highest ROI: no tests") is finally closed — not the measurement harness (`eval.py` did that), but **pytest unit tests** that catch the recurring-typo / silent-drift class of bug that plagued every session. Seven tests, `7 passed in ~1.2s`:
+- **conservation** (`received == diverted+retained+down+delivered+kickedOut`) and **cash-out identity** (`cashedOut == delivered+diverted`), across all three families;
+- **feature contract** (`len(vector) == len(FEATURES_NAMES)`) — the exact silent mismatch that bit `features.py` edits repeatedly;
+- **no leakage** (entities expose no `label`/`trueDelivered`/`schemes`/`corrupt`/`diverted`);
+- **reproducibility** (`dataset(seed=0)` identical across calls);
+- **label-shuffle ≈ chance** (shuffled-label AUC mean < 0.70);
+- **no single feature separates** (every single-feature AUC < 0.98 — simulator not trivially easy).
+
+**Proven to have teeth** (CLAUDE.md "break your own work"): planted a stray feature (vector 8→9), ran → `FAILED … assert 9 == 8`; reverted → `7 passed`. So the drift bug that was silent all session now fails loudly in ~1 second — the maintainability keystone for making this open-sourceable. **Honest coverage gap:** this is the core invariant set, not all 8 CLAUDE.md checks (no seed-split-spread, held-out-family, or IsolationForest-fit-on-honest-only yet); and a **`requirements.txt`** now pins the real deps (`numpy`, `networkx`, `scikit-learn`, `pytest`), so a fresh `./start.sh` installs them (its `if [ -f requirements.txt ]` branch picks it up) — closing the other long-standing "no requirements.txt" item.

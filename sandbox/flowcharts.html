@@ -51,7 +51,7 @@
 
 <main>
 <div class="board">
-<svg class="map" viewBox="0 0 1120 560" role="img" aria-label="Ratsniffer architecture diagram">
+<svg class="map" viewBox="0 0 1120 600" role="img" aria-label="Ratsniffer architecture diagram">
   <defs>
     <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b93a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -170,7 +170,7 @@
     <text x="422" y="430" fill="#8b93a3" font-size="11">over and over</text>
   </a>
 
-  <rect x="884" y="356" width="212" height="172" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
+  <rect x="884" y="356" width="212" height="220" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
   <text x="892" y="348" fill="#8b93a3" font-size="12">④⁺ grade &amp; measure</text>
   <a href="#c-eval">
     <rect x="898" y="372" width="184" height="40" rx="7" fill="#171a21" stroke="#58a6ff"/>
@@ -186,6 +186,11 @@
     <rect x="898" y="468" width="184" height="40" rx="7" fill="#171a21" stroke="#58a6ff"/>
     <text x="908" y="488" fill="#e6e9ef" font-size="13" font-weight="600">report.py</text>
     <text x="908" y="501" fill="#8b93a3" font-size="11">per-office verdict + why</text>
+  </a>
+  <a href="#c-openproblem">
+    <rect x="898" y="516" width="184" height="40" rx="7" fill="#171a21" stroke="#d29922"/>
+    <text x="908" y="536" fill="#e6e9ef" font-size="13" font-weight="600">openproblem.py</text>
+    <text x="908" y="549" fill="#8b93a3" font-size="11">the false-alarm investigation</text>
   </a>
 
   <rect x="660" y="356" width="200" height="104" rx="10" fill="none" stroke="#2a2f3a" stroke-dasharray="3 4"/>
@@ -206,6 +211,75 @@
   <span><i class="dot" style="background:#3fb950"></i> real-life check</span>
   <span><i class="dot" style="background:#a371f7"></i> cheating bot</span>
 </div>
+
+<h2>How a case is judged — flagged or cleared</h2>
+<p class="sub">One office runs down the detector stack. Each check is a yes/no gate: <strong>yes</strong> flags it (with the reason) and sends it to an auditor; <strong>no</strong> falls through to the next check. Pass every check and it's cleared. (Oval = start/end · diamond = a check · box = a step · red = flagged · green = let off.)</p>
+<div class="board">
+<svg class="map" viewBox="0 0 760 700" role="img" aria-label="How a case is judged — decision flow">
+  <defs>
+    <marker id="fa" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1 L9 5 L1 9" fill="none" stroke="#8b93a3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <rect x="150" y="18" width="180" height="36" rx="18" fill="#171a21" stroke="#58a6ff"/>
+  <text x="240" y="41" text-anchor="middle" fill="#e6e9ef" font-size="13">a payment arrives</text>
+  <line x1="240" y1="54" x2="240" y2="88" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <rect x="150" y="90" width="180" height="36" rx="6" fill="#171a21" stroke="#58a6ff"/>
+  <text x="240" y="113" text-anchor="middle" fill="#e6e9ef" font-size="13">recorded on the chain</text>
+  <line x1="240" y1="126" x2="240" y2="154" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <polygon points="240,156 330,188 240,220 150,188" fill="#171a21" stroke="#e5534b"/>
+  <text x="240" y="192" text-anchor="middle" fill="#e6e9ef" font-size="12">price out of band?</text>
+  <text x="352" y="182" fill="#8b93a3" font-size="10">yes</text>
+  <line x1="330" y1="188" x2="464" y2="188" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+  <rect x="466" y="170" width="206" height="36" rx="7" fill="#2a1414" stroke="#e5534b"/>
+  <text x="476" y="193" fill="#e5534b" font-size="12">⚑ price_band</text>
+  <text x="250" y="240" fill="#8b93a3" font-size="10">no</text>
+  <line x1="240" y1="220" x2="240" y2="244" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <polygon points="240,246 330,278 240,310 150,278" fill="#171a21" stroke="#e5534b"/>
+  <text x="240" y="282" text-anchor="middle" fill="#e6e9ef" font-size="12">sent off the tree?</text>
+  <text x="352" y="272" fill="#8b93a3" font-size="10">yes</text>
+  <line x1="330" y1="278" x2="464" y2="278" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+  <rect x="466" y="260" width="206" height="36" rx="7" fill="#2a1414" stroke="#e5534b"/>
+  <text x="476" y="283" fill="#e5534b" font-size="12">⚑ off_tree / kickback</text>
+  <text x="250" y="330" fill="#8b93a3" font-size="10">no</text>
+  <line x1="240" y1="310" x2="240" y2="334" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <polygon points="240,336 330,368 240,400 150,368" fill="#171a21" stroke="#e5534b"/>
+  <text x="240" y="372" text-anchor="middle" fill="#e6e9ef" font-size="12">linked owner holding?</text>
+  <text x="352" y="362" fill="#8b93a3" font-size="10">yes</text>
+  <line x1="330" y1="368" x2="464" y2="368" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+  <rect x="466" y="350" width="206" height="36" rx="7" fill="#2a1414" stroke="#e5534b"/>
+  <text x="476" y="373" fill="#e5534b" font-size="12">⚑ self_deal</text>
+  <text x="250" y="420" fill="#8b93a3" font-size="10">no</text>
+  <line x1="240" y1="400" x2="240" y2="424" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <polygon points="240,426 330,458 240,490 150,458" fill="#171a21" stroke="#d29922"/>
+  <text x="240" y="462" text-anchor="middle" fill="#e6e9ef" font-size="12">holds &#8811; its peers?</text>
+  <text x="352" y="452" fill="#8b93a3" font-size="10">yes</text>
+  <line x1="330" y1="458" x2="464" y2="458" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+  <rect x="466" y="440" width="206" height="36" rx="7" fill="#2a1414" stroke="#e5534b"/>
+  <text x="476" y="463" fill="#e5534b" font-size="12">⚑ retention &#183; ML</text>
+  <text x="250" y="510" fill="#8b93a3" font-size="10">no</text>
+  <line x1="240" y1="490" x2="240" y2="514" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <polygon points="240,516 330,548 240,580 150,548" fill="#171a21" stroke="#3fb950"/>
+  <text x="240" y="552" text-anchor="middle" fill="#e6e9ef" font-size="12">audit finds a gap?</text>
+  <text x="352" y="542" fill="#8b93a3" font-size="10">yes</text>
+  <line x1="330" y1="548" x2="464" y2="548" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+  <rect x="466" y="530" width="206" height="36" rx="7" fill="#2a1414" stroke="#e5534b"/>
+  <text x="476" y="553" fill="#e5534b" font-size="12">⚑ oracle: ghost / phantom</text>
+  <text x="250" y="600" fill="#8b93a3" font-size="10">no</text>
+  <line x1="240" y1="580" x2="240" y2="616" stroke="#8b93a3" stroke-width="1.5" marker-end="url(#fa)"/>
+
+  <rect x="150" y="618" width="180" height="40" rx="20" fill="#171a21" stroke="#3fb950"/>
+  <text x="240" y="643" text-anchor="middle" fill="#3fb950" font-size="13">cleared — let off</text>
+</svg>
+</div>
+<p class="sub">Every red stop is a <em>reason</em>, not just a verdict — the office is sent to a human auditor with the specific tell that caught it. The checks run cheapest-first (free rules before the model before the costly audit). On generator-style worlds most clean offices fall straight through — but on <em>realistic</em> worlds, where honest offices hold unspent budget, many trip the retention check and get flagged anyway. That over-accusation is the project's main open problem.</p>
 
 <h2>The math, in plain English</h2>
 <p class="sub">Each box is one small idea. Here's the idea, then the formula.</p>
@@ -312,14 +386,14 @@
   <a class="card b" id="c-eval" href="#c-eval">
     <h3>④⁺ Grading at scale — and checking the grade is real</h3>
     <div class="files">eval.py</div>
-    <p><code>sniff.py</code> grades one world; <code>eval.py</code> grades the <em>detector</em> across many worlds, and asks the harder question: is a good score real, or is the test leaking the answer? Three guards:</p>
+    <p><code>sniff.py</code> grades one world; <code>eval.py</code> grades the <em>detector</em> across many worlds, and asks the harder question: is a good score real, or is the test leaking the answer? Several guards:</p>
     <p><strong>Shuffle the answer key.</strong> Scramble the <em>training</em> labels, retrain, then test against the <em>real</em> ones — averaged over many shuffles. If the detector still scores well it was reading a leak, not learning fraud. An honest mean lands at a coin-flip:</p>
     \[ \overline{\text{AUC}}_{\text{shuffled}} \;\approx\; 0.5 \]
     <p><strong>Split by world, never by office.</strong> Train on some worlds, test on others — so it can't just memorise offices it has already seen.</p>
     <p><strong>Hold out a whole <em>kind</em> of fraud.</strong> Train on two scheme families, test on the third it never saw — the real test of catching the unseen. A hard lesson: our <em>generators</em> had leaked structure into the labels (a thief was always a leaf in one family, always an internal node in another), so a feature could mean opposite things across families — a confound in our own simulator, not a fact about real fraud. We fixed the generators/features and report all three families, never just the best.</p>
     <p>And we watch <strong>PR-AUC</strong> and the <strong>false-alarm rate</strong>, not accuracy — when only 1 in 7 offices is crooked, a detector that flags nobody is "86% accurate" and useless.</p>
     <p><strong>Recall at a false-alarm budget — the number that actually matters.</strong> A score can read ROC 0.76 while the catch-rate at a usable 5%-false-alarm setting is <em>zero</em>. So we fix a budget and ask how many thieves we catch there, measuring the budget on <em>fully honest worlds</em> (no fraud planted) — the real false-alarm rate, not the flattering one measured where thieves are present.</p>
-    <p>So instead of one recall number we report a <strong>coverage matrix</strong> (<code>coverage.py</code>): for each kind of theft, which layer catches it. The point is the <em>division of labour</em> — no single layer is complete, the union almost is (✓ = caught, ~ = partial, · = missed):</p>
+    <p>So instead of one recall number we report a <strong>coverage matrix</strong> (<code>coverage.py</code>): for each kind of theft, which layer catches it — each cell is that layer's recall on worlds of that type (<strong>✓ ≥ 85%, ~ 25–85%, · &lt; 25%</strong>). <strong>Read it with two caveats up front:</strong> we wrote the rules, the generators <em>and</em> the oracle, so every row was built to have a catcher — this shows the <em>division of labour</em>, not an unbiased score. And the <strong>oracle reads the simulator's ground truth directly</strong> — so "phantom ✓" is true by construction, and in reality it (like every layer) would need an inspection budget.</p>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin:6px 0 10px;font-variant-numeric:tabular-nums">
       <tr style="color:#8b93a3;text-align:left"><th style="padding:2px 6px">theft type</th><th style="padding:2px 6px">rules</th><th style="padding:2px 6px">ML</th><th style="padding:2px 6px">oracle</th><th style="padding:2px 6px">all</th></tr>
       <tr><td style="padding:2px 6px">retention / skim</td><td>✓</td><td>✓</td><td>✓</td><td>100%</td></tr>
@@ -329,10 +403,21 @@
       <tr><td style="padding:2px 6px">external income</td><td>·</td><td>✓</td><td>✓</td><td>100%</td></tr>
       <tr><td style="padding:2px 6px">phantom goods</td><td>·</td><td>·</td><td>✓</td><td>100%</td></tr>
       <tr><td style="padding:2px 6px">disguised (mimic)</td><td>·</td><td>~</td><td>·</td><td style="color:#e5534b">69%</td></tr>
+      <tr><td style="padding:2px 6px">bred mimics (no bespoke rule)</td><td>✓</td><td>✓</td><td>✓</td><td>99% @ 37% FPR</td></tr>
     </table>
-    <p>Rules catch structural tells (markup, self-deal), the ML catches <em>relative retention</em>, the oracle catches what leaves no on-ledger trace (phantom goods). Each fills the others' blind spots — so the union is complete <em>except against mimicry</em> (69%), theft tuned under every threshold.</p>
-    <p><strong>Does it transfer?</strong> Trained only on synthetic schemes, the detector catches <strong>99%</strong> of corrupt nodes across 40 <em>bred</em> variants of real Indonesian cases (e-KTP, laundering, ghost projects) it never saw. Recall is real.</p>
-    <p><strong>But precision is not.</strong> That 99% comes at a <strong>37% false-alarm rate</strong> on those realistic worlds — because real offices legitimately <em>hold</em> unspent budget, and the detector can't tell honest retention from a small skim without a delivering baseline. High recall, out-of-distribution precision collapse; the oracle is the only low-false-alarm layer (2%). <strong>The learned component finds corruption even in schemes it never trained on, but on realistic worlds it over-accuses honest offices — that gap, not a bigger recall number, is the real state of the art.</strong></p>
+    <p>Rules catch structural tells, the ML catches relative retention, the oracle catches what leaves no on-ledger trace. The union is complete <em>except against mimicry</em> (69%) — and the honest row is the last one: <strong>bred mimics the breeder invented with no rule written for them</strong> (synthetic variants of real cases — e-KTP, laundering, ghost projects — not real data). There the detector gets <strong>~64% recall at a fixed 10% false-alarm rate</strong>, versus <strong>17% for hold_rank alone and 11% for random</strong>. So it's real transfer, clearly above trivial — but ~64%, not the 99% an unbounded false-alarm rate would suggest.</p>
+    <p><strong>The false-alarm rate the matrix needs.</strong> A union of layers can only <em>add</em> false alarms (\(\text{FPR}_\cup \le \sum \text{FPR}\)). On generator-style honest worlds the union sits near the ML's calibrated <strong>~10%</strong> (rules and oracle add almost nothing there); on <strong>realistic honest worlds — offices that legitimately hold unspent budget — it jumps to 37%</strong> (the oracle stays clean at 2%; the ML drives the rest). The detector can't tell honest holding from a small skim without a delivering baseline.</p>
+    <p><strong>What 37% does to an auditor (precision@\(k\)).</strong> At recall \(r=0.99\) and false-alarm \(f=0.37\), precision \(=\frac{r\pi}{r\pi+f(1-\pi)}\): at 1-in-7 corrupt it's \(\approx 0.31\); at 1-in-100 it's \(\approx 0.03\). That collapse — honest offices over-accused on realistic worlds — not a bigger recall number, is <strong>the main open problem in this project</strong>.</p>
+  </a>
+
+  <a class="card a" id="c-openproblem" href="#c-openproblem">
+    <h3>④⁺ The false-alarm problem — investigated</h3>
+    <div class="files">openproblem.py</div>
+    <p>The 37% got three experiments. They came back honest — and mostly <em>negative</em>, which is the finding.</p>
+    <p><strong>1. It's an assumption, not a constant.</strong> False alarms climb with how much legitimate holding you simulate — <strong>10% → 44%</strong> as the share of honest offices that keep reserves goes 0 → 50%. The "37%" is one point on that curve (near a 40% holding share), so it belongs reported as a <em>curve</em>.</p>
+    <p><strong>2. The obvious fix failed.</strong> Ranking retention <em>within function</em> (ministries vs clinics) didn't help — ranking a group of all-reservers still spreads them 0–1, so the top reservers still flag. The real fix would be deviation from a function's <em>expected</em> hold, not a rank.</p>
+    <p><strong>3. The deep one — the model misranks.</strong> With an inspection budget (ML ranks, oracle confirms the top \(k\)), <strong>precision@5% ≈ 0.04 and recall ≈ 1% — worse than random</strong>, because legitimate reservers outrank the real thieves, who often steal with <em>low</em> retention. The retention signal is <em>anti-correlated</em> with catching non-retention crime — which is most real crime.</p>
+    <p>So the open problem isn't a threshold to tune. The honest directions: a per-function <em>expected-hold</em> baseline, or demote retention and let the rules and oracle lead the ranking.</p>
   </a>
 
   <a class="card a" id="c-report" href="#c-report">
@@ -342,7 +427,7 @@
     <p>A logistic model's push toward "corrupt" from each clue is its <em>weight</em> times the clue's value, standardised — a <em>log-odds contribution relative to the average node</em>. Rank them and the top few <em>are</em> the explanation, read straight off the trained model:</p>
     \[ \text{push}_j \;=\; w_j \cdot \frac{x_j - \mu_j}{\sigma_j} \]
     <p>So a vendor reads back as <code>why: hold_ratio, hold_rank, markup</code> — the tells a human auditor would point at. Two honest caveats: these reasons describe <em>the model</em>, not the fraud — if it leans on a leak it will explain the leak confidently; and the Isolation Forest's novelty flags (the open-world case, the ones that matter most) come with <em>no</em> reasons at all. The sandbox shows a lighter rule-layer version; the model reasoning runs in Python.</p>
-    <p>Two choices keep the shipped report honest: it trains on <em>honest</em> worlds too, so it stops flagging legitimate-but-odd offices; and it calls an office corrupt only above a threshold <strong>calibrated to a 10% false-alarm budget</strong> on clean worlds, not an arbitrary one-half. Calibrated on one set of clean worlds and measured on another, the out-of-sample false-alarm rate holds at <strong>0.10 ± 0.01</strong> (5 draws) — the budget generalises.</p>
+    <p>Two choices keep the shipped report honest: it trains on <em>honest</em> worlds too, so it stops flagging legitimate-but-odd offices; and it calls an office corrupt only above a threshold <strong>calibrated to a 10% false-alarm budget</strong> on clean worlds, not an arbitrary one-half. Calibrated on one set of clean worlds and measured on another, the false-alarm rate holds at <strong>0.10 ± 0.01</strong> (5 draws) <em>on generator-style honest worlds</em>. Honest caveat: on <em>realistic</em> honest worlds — offices that legitimately hold unspent budget — the same threshold blows out to ~37%. The budget holds in-distribution and breaks out of it.</p>
   </a>
 
   <a class="card p" id="c-adv" href="#c-adv">
@@ -357,10 +442,10 @@
   <a class="card a" id="c-proc" href="#c-proc">
     <h3>⑥ A second domain — procurement integrity</h3>
     <div class="files">procurement.py</div>
-    <p>The first real data (World Bank debarred firms) showed real enforcement catches a <em>different</em> crime than this simulator models: not budget-flow retention, but <strong>how contracts are won</strong> — bidding fraud, collusion, shell networks. So a second domain alongside leakage: tenders with bids, not money down a tree.</p>
+    <p>The first real data (World Bank debarred firms) showed that <strong>what the World Bank sanctions is mostly procurement misconduct</strong> — not budget-flow retention, but <strong>how contracts are won</strong>: bidding fraud, collusion, shell networks. (That's <em>enforcement</em> data — what gets caught and published — not a measure of what corruption actually is.) So a second domain alongside leakage: tenders with bids, not money down a tree.</p>
     <p><strong>The red flags a rigged tender leaves:</strong> one lonely bid; losing bids clustered too tightly (collusion) or the winner priced just under the estimate; the same firms taking turns; bidders sharing an address or owner (a shell network — graph-shaped, where a GNN would fit).</p>
     \[ \text{bid spread } \mathrm{CV} = \sigma_b / \mu_b \ \text{too low}, \qquad \frac{\text{winning bid}}{\text{estimate}} \to 1 \]
-    <p><strong>Status, honestly:</strong> scaffolded and wired to the same honesty harness (held-out by buyer, recall@budget, label-shuffle) — which <em>immediately flagged the generator as too easy</em> (one feature separates perfectly), so there is no real recall number here yet. The win is that the discipline transferred to a new domain and caught the easiness on contact. The leakage domain's retention signal is expected to score near chance here — different crime, different features.</p>
+    <p><strong>Status, honestly:</strong> scaffolded and wired to the same honesty harness (held-out by buyer, recall@budget, label-shuffle) — which <em>immediately flagged the generator as too easy</em> (one feature separates perfectly), so there is no real recall number here yet. The win is that the discipline transferred to a new domain and caught the easiness on contact. The leakage domain's retention signal is <em>expected</em> to score near chance here — a hypothesis, not yet measured — different crime, different features.</p>
   </a>
 
 </div>
@@ -427,12 +512,12 @@
   <code>ingest.py</code> + <code>chain.py</code> + <code>consensus.py</code> + <code>journal.py</code> record it
   (a committee agrees, every firing logged) →
   <code>gates · analyzer · laundering · ml · oracle</code> judge it →
-  <code>sniff.py</code> grades one world and <code>eval.py</code> grades the detector across many
-  (shuffling answers, splitting by world, holding out whole kinds of fraud to test for real),
-  while <code>report.py</code> lays out the verdict per office with the model's own reasoning →
-  the <code>cheating bot</code> invents harder worlds — now <em>disguised</em>, not loud —
-  and feeds its wins back so the detector keeps learning.
-  Open with <code>xdg-open flowcharts.html</code> (needs internet once, to load the math font).
+  <code>sniff.py</code> grades one world, <code>eval.py</code> grades the detector across many
+  (shuffle, world-split, hold-out families), <code>coverage.py</code> maps which layer catches which crime,
+  and <code>report.py</code> lays out the per-office verdict with the model's reasoning →
+  the <code>cheating bot</code> invents harder worlds — now <em>disguised</em>, not loud — and
+  <code>procurement.py</code> opens a second domain (rigged bids, not budget leakage).
+  Open with <code>xdg-open flowcharts.html</code> (the math font loads from a CDN the first time; your browser then caches it, so it renders offline after — no network needed once cached).
 </footer>
 </body>
 </html>
