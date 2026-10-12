@@ -503,6 +503,18 @@ k=1%  precision 0.22   k=5%  0.04   k=10%  0.02      recall@k ≈ 0.01 everywher
 
 **What the three establish together:** the open problem isn't a tunable FPR. The ML's one transferable signal (relative retention) is, on realistic mixed populations, **actively anti-correlated with catching non-retention crime** — which is most real crime (the debarment finding). The viable directions are now narrowed: (a) a function-specific *expected-hold* baseline (deviation, not rank), or (b) demote retention and let rules/oracle lead the ranking. A bigger recall number is not the goal; fixing the misranking is.
 
+### Fix attempt: expected-hold baseline — also failed (`openproblem.py`)
+Direction (a) tried: flag **deviation from a function's expected hold** (robust z within function, `(hold − median_fn)/MAD_fn`) instead of ranking — a legit ministry at its function's norm scores z≈0, a thief above its peers flags. Added as a third variant. VERIFIED off a real run:
+```
+                bred recall   honest FPR (p_hold 0 → 0.5)
+global rank        0.91       10 → 44%
+function rank      0.90       10 → 50%
+expected-hold z    0.99       10 → 51%
+```
+precision@k unchanged (0.22 / 0.04 / 0.02 at k=1/5/10%). **It raised recall (0.91 → 0.99) but did not cut the false-alarm curve (same/worse than global) and did not fix the misranking.** Cause: the **MAD→0 blowup** the Oct-7 "rank transfers, robust-z does not" note already warned about — at low holding every honest node holds ~0, MAD collapses to the `1e-6` floor, the z explodes into clipped noise (±8), and `tau` gets calibrated on that noise.
+
+**So both retention-baseline fixes (function-rank, function-z) fail on precision.** Retention is a *recall* booster, not a precision fix — no baseline rescues it. This settles the open problem toward **direction (b): demote retention, let rules and the oracle lead the ranking.** The `openproblem.py` three-way comparison is the committed record.
+
 ### Tests — the first real unit net (`tests/test_invariants.py`)
 The oldest item on the problem list (Oct-4: "highest ROI: no tests") is finally closed — not the measurement harness (`eval.py` did that), but **pytest unit tests** that catch the recurring-typo / silent-drift class of bug that plagued every session. Seven tests, `7 passed in ~1.2s`:
 - **conservation** (`received == diverted+retained+down+delivered+kickedOut`) and **cash-out identity** (`cashedOut == delivered+diverted`), across all three families;
