@@ -1,0 +1,17 @@
+firm,role,mechanism,altitude,infr_start,infr_end,market,buyer,decision_date,fined,conf
+Condmag,bidder,single-tender bid-rigging,tender,2009,2009,gas pipeline (Butimanu-Brazi),Transgaz,2012-11?,yes,med
+Inspet,bidder,single-tender bid-rigging,tender,2009,2009,gas pipeline (Butimanu-Brazi),Transgaz,2012-11?,yes,med
+Moldocor,bidder,single-tender bid-rigging,tender,2011,2011,gas pipeline (Giurgiu-Ruse),Transgaz,2012-11?,yes,med
+TMUCB,bidder,single-tender bid-rigging,tender,2011,2011,gas pipeline (Giurgiu-Ruse),Transgaz,2012-11?,yes,med
+Siveco Romania,bidder-winner,cover-bidding,tender,2008,2008,IT system,APIA,2017-07,yes,high
+Intrarom,bidder-cover,cover-bidding,tender,2008,2008,IT system,APIA,2017-07,yes,high
+Energobit,bidder,meter cartel / market-sharing,firm,2008,2015,electricity meters,E.ON/Enel/CEZ/Electrica,2017-12-20,yes,high
+Electromagnetica,bidder,meter cartel / market-sharing,firm,2008,2015,electricity meters,distribution operators,2017-12-20,yes,high
+Elster Rometrics,bidder,meter cartel / market-sharing,firm,2008,2015,electricity meters,distribution operators,2017-12-20,yes,high
+Landis+Gyr,bidder,meter cartel / market-sharing,firm,2008,2015,electricity meters,distribution operators,2017-12-20,yes,high
+Ecro,bidder,meter cartel / market-sharing,firm,2008,2015,electricity meters,distribution operators,2017-12-20,yes,high
+AEM,participant,meter cartel (leniency),firm,2008,2015,electricity meters,distribution operators,2017-12-20,no,high
+Electrica,organiser-buyer,facilitation,buyer,2008,2015,electricity meters,self,2017-12-20,yes,high
+Oyl Company Holding,bidder,regional market-sharing,firm,,,road maintenance (5 counties),county road authorities,2026-01-14,yes,med
+Autoprima Serv,bidder,regional market-sharing,firm,,,road maintenance,,2026-01-14,yes,low
+Saga Infrastructura,bidder,regional market-sharing,firm,,,road maintenance,,2026-01-14,yes,low

@@ -1,8 +1,18 @@
 from __future__ import annotations 
-FEATURES_NAMES = ["hold_ratio", "markup", "linked_owner", "off_tree_frac", "ext_income_frac", "max_return", "linked_income", "hold_rank"]
-
+FEATURES_NAMES = ["hold_ratio", "markup", "linked_owner", "off_tree_frac", "ext_income_frac", "max_return", "linked_income", "flow_leverage", "hold_rank"]
+from collections import defaultdict
 
 def build_features(entities):
+    kids = defaultdict(list)
+    for e in entities.values():
+        if e["parent"]:
+            kids[e["parent"]].append(e["id"])
+    memo = {}
+    def sub_deliv(i):
+        if i not in memo:
+            memo[i] = entities[i]["delivered"] + sum(sub_deliv(k) for k in kids[i])
+        return memo[i]
+    total = sum(e["delivered"] for e in entities.values()) or 1.0
     feats = {}
     for e in entities.values():
         r = e["received"] or 1.0
@@ -18,6 +28,7 @@ def build_features(entities):
             ext_amt / r,
             max_ret,
             linked_inc,
+            sub_deliv(e["id"]) / total,
         ]
     ids = list(feats)
     denom = max(len(ids)- 1, 1)
