@@ -1,0 +1,14 @@
+{
+	"fields": {
+		"id": "NUTS1",
+		"value": "Count",
+		"name": "Region name"
+	},
+	"data": [
+		{
+			"id": "CY0",
+			"name": "ΚΥΠΡΟΣ (Kypros)",
+			"value": 10429
+		}
+	]
+}

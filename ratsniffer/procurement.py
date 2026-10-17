@@ -3,8 +3,8 @@ import numpy as np
 from sklearn.metrics import roc_auc_score 
 from eval import fit_score, recall_at_fpr, split_by_world, ms 
 
-PROC_FEATURES = ["single_bid", "bid_cv", "winner_premium", "n_bidders"]
 
+PROC_FEATURES = ["single_bid", "bid_cv", "winner_premium", "n_bidders","rel_distance", "bid_skew", "bid_kurt"]
 def procurement_world(rng, n_tenders=25, p_rig=0.25):
     tenders = []
     for _ in range(n_tenders):
@@ -24,9 +24,23 @@ def procurement_world(rng, n_tenders=25, p_rig=0.25):
     return tenders
 
 def tender_features(t):
-    b = t["bids"]; k = len(b); mu = sum(b) / k 
-    cv = (sum((x - mu) ** 2 for x in b) / k) ** 0.5 / mu if mu and k > 1 else 0.0
-    return [1.0 if k == 1 else 0.0, cv, min(b) / t["estimate"], float(k)]
+    b = np.sort(np.asarray(t["bids"], float))
+    k = len(b)
+    mu, sd = (b.mean(), b.std()) if k else (0.0, 0.0)
+    cv = sd/mu if mu and k > 1 else 0.0 
+    if k >= 3:
+        losers = b[:1]
+        sl = losers.std()
+        rd = (b[1] - b[0]) / sl if sl > 0 else 0.0
+        z = (b - mu) / sd if sd > 0 else b * 0.0
+        skew = float((z ** 3).mean())
+        kurt = float((z ** 4).mean() - 3.0)
+    else:
+        rd = skew = kurt = 0.0
+    single = 1.0 if k == 1 else 0.0
+    wp = b[0] / t["estimate"] if t["estimate"] else 0.0
+    return [single, cv, wp, float(k), rd, skew, kurt]
+     
 def dataset(n_worlds, seed):
     rng = random.Random(seed)
     X, y, w = [], [], []

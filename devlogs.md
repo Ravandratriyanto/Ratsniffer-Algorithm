@@ -525,3 +525,151 @@ The oldest item on the problem list (Oct-4: "highest ROI: no tests") is finally 
 - **no single feature separates** (every single-feature AUC < 0.98 — simulator not trivially easy).
 
 **Proven to have teeth** (CLAUDE.md "break your own work"): planted a stray feature (vector 8→9), ran → `FAILED … assert 9 == 8`; reverted → `7 passed`. So the drift bug that was silent all session now fails loudly in ~1 second — the maintainability keystone for making this open-sourceable. **Honest coverage gap:** this is the core invariant set, not all 8 CLAUDE.md checks (no seed-split-spread, held-out-family, or IsolationForest-fit-on-honest-only yet); and a **`requirements.txt`** now pins the real deps (`numpy`, `networkx`, `scikit-learn`, `pytest`), so a fresh `./start.sh` installs them (its `if [ -f requirements.txt ]` branch picks it up) — closing the other long-standing "no requirements.txt" item.
+
+---
+
+## Session log — 2026-10-14
+
+### First real, unauthored data — opentender Cyprus (the milestone, honestly bounded)
+The whole project self-grades; this is the first time its logic touched data neither of us wrote. Pulled **opentender.eu** (DIGIWHIST) Cyprus: **12,699 real public tenders**, as NDJSON with the facts (procedure, bids under `lots[].bids`, `estimatedPrice`/`finalPrice`) **plus DIGIWHIST's own integrity indicators** baked in. Data is **CC BY-NC-SA (non-commercial)** → gitignored (`ratsniffer/data/*.ndjson`, `/*.zip`); only results go in the repo, never the data.
+
+**The comparison (concordance, not validation):** computed our procurement invariants (single-bid from `len(lots[].bids)`, non-open procedure, winner-premium `final/estimated ≥ 0.98`) on 3,824 awarded tenders, and checked whether they flag the same contracts DIGIWHIST rates low-integrity.
+```
+non-open procedure:      33.6%
+winner premium median:   0.92   (37.5% win at >=98% of estimate)
+opentender integrity:    median 50/100
+CONCORDANCE: our combined red-flag vs opentender low-integrity  ->  AUC = 0.803
+  (our-flag mean 1.85 on low-integrity vs 1.04 on high)
+```
+So our hand-written invariants agree with an **independent, established methodology** on real contracts at **AUC 0.80** — the first evidence the detector's logic recognizes the same risky contracts the European experts do, outside the simulator. The honest milestone.
+
+**The honest caveats, logged so nobody oversells this:**
+- **Concordance ≠ validation.** Opentender's indicators are themselves *heuristics*, not confirmed corruption. There is **no "corrupt" label** in the data — there never is, for anyone. We agree with another flag system; neither caught a proven thief.
+- **Partial circularity** inflates 0.80: opentender's integrity *includes* single-bid and procedure-type — the same concepts in our flag. The one independent signal is winner-premium.
+- **The single-bid field is a data artifact.** 80.8% of awarded tenders show "1 bid" because Cyprus logs only the *winner*; opentender's own `INTEGRITY_SINGLE_BID` correctly reads `INSUFFICIENT_DATA` and abstains where our naive rule fires. On real files, a rule is only as good as the fields the government filled in — and opentender is more honest here than our rule was.
+- Tests the **procurement side only** (`procurement.py` logic, via hand rules — the ML sat this out, no money-flow in procurement data). The budget-leakage detector still has no real-world input.
+
+### No ground-truth anchor exists in what we can get
+- **Debarred-firm cross-reference: 0 hits.** Matched all 1,394 World Bank debarred firms against 4,461 Cyprus suppliers — **zero** exact matches (the "near" matches were coincidental shared words like "waste management"). Reason: WB debarments are construction firms on *WB-financed* projects in developing countries; Cyprus is EU, non-WB-funded — **non-overlapping universes**. So no Cyprus tender can be tied to a confirmed-bad firm here.
+- **EU exclusion registers are mostly private.** Italy's ANAC *Casellario* Section B (the exclusion data) is **reserved to contracting authorities**, not public — and that's the common EU pattern (OECD/SIGMA). So a clean "public debarment register + opentender coverage" join is scarce; the ground-truth wall is partly **policy**, not just download friction. Best candidate to verify for a register-join is Slovakia; the reliable route is hand-linking **adjudicated** OLAF/EPPO/court cases to their opentender records (manual, but real labels).
+
+### Next
+- **Generalization re-test:** run the same concordance check on an opentender **Italy** year-slice (not the 3.5 GB all-time dump) — does the ~0.80 agreement with DIGIWHIST hold in a second, larger country, or was it Cyprus-specific?
+- De-circularize: re-run concordance using **only winner-premium** (drop the shared single-bid/procedure concepts) to isolate the genuinely independent agreement.
+- The only road to real labels remains hand-linking adjudicated cases; no bulk download delivers it.
+
+---
+
+## Session log — 2026-10-15
+
+### Italy extracted + characterized (field population only — no AUC computed yet)
+Extracted `data-it-ndjson.zip` into `ratsniffer/data/` (gitignored by the existing `*.ndjson` rule): **21 years, 2002–2024, 30 GB** — ~200× Cyprus, so the concordance script must **stream line-by-line and sample years**, not load. All figures below are VERIFIED off sampled scans (2015 ~30–80k lines, 2007 50k), not full-file.
+
+Field population (Italy ≠ Cyprus):
+```
+                 estimatedPrice   finalPrice(raw)   digiwhistPrice
+Cyprus 2015          43.6%            88.2%             97.9%
+Italy  2015         100.0%             0.0%            100.0%
+```
+- **`finalPrice` is dead in Italy (0%, tender + lot).** `estimatedPrice` and `digiwhistPrice` are both 100%.
+- Awarded (has ≥1 bid) ~55% of records; **pre-2008 is notice-only (0 bids)** → use **2015+**.
+- single-bid share **74.3%** (Cyprus 80.8%) — same "logs only the winner" artifact; DIGIWHIST's own `INTEGRITY_SINGLE_BID` is CALCULATED on only 74% and abstains elsewhere.
+- **`indicators` present on 99.9%** of awarded (I first missed it — my schema dump was on a notice-only 2007 record with none). Richer than Cyprus: SINGLE_BID, PROCEDURE_TYPE, ADVERTISEMENT/DECISION_PERIOD, SUPPLIER_SHARE, BENFORDS_LAW, DISTINCT_MARKET, MULTIPLE_VALID_BIDS + transparency fields. **The concordance baseline is intact.**
+
+### The finding: Italy's award price is unverifiable from within Italy (the `digiwhistPrice` provenance problem)
+Winner-premium is the **one independent signal** in the concordance (single-bid + procedure-type are shared with — thus circular to — opentender's integrity score). In Cyprus it came from the raw government `finalPrice`. Italy has **no raw `finalPrice`**, so winner-premium must be reconstructed from **`digiwhistPrice/estimatedPrice`** — and `digiwhistPrice` is DIGIWHIST's *computed* field.
+- **VERIFIED (Cyprus):** where both raw `finalPrice` and `digiwhistPrice` exist, **`digiwhistPrice == finalPrice` 100%** (n=247). So in Cyprus `digiwhistPrice` is a cleaned mirror of the reported final price, and the raw field was there to *prove* it.
+- **INFERRED, not verifiable in Italy:** that Italy's `digiwhistPrice` is likewise the awarded price. The pattern is *consistent* (differs from estimate on 66.2% of awarded, median ratio 0.962, winner-premium computable+sane [0.3–1.3] on 98.1%, 46% ≥0.98) — but equally consistent with it being a DIGIWHIST model/cleaned estimate, in which case every Italy winner-premium number is meaningless.
+- **Gate — attempted, and it CANNOT be done from within the Italy data (VERIFIED 2026-10-15).** Two routes both dead: (1) `publications` carry **no inline prices** — only source pointers (`formType`, a `machineReadableUrl` to ANAC *bulk* datasets like `.../dataset/agg`), so there is no per-tender value to check against; (2) raw `finalPrice` is **absent in all 286,150 tenders across all 25 Italy files** (tender- and lot-level), so the Cyprus-style `digi==final` confirmation has nothing to verify against. The only positive evidence is circumstantial: the award-vs-estimate skew (62% under / 4.8% over / 33% exactly equal — award outcomes look like this, a re-cleaned estimate would not) plus the Cyprus precedent that `digiwhistPrice` is DIGIWHIST's "best price" preferring the award value. **So Italy's winner-premium provenance is unverifiable from the 30 GB dump — the only real VERIFY route is external: download ANAC's `aggiudicazioni` bulk dataset and CIG-match a sample** (the ANAC-access friction the Oct-14 log flagged). Decision for now: use `digiwhistPrice` as the award price with this caveat stapled to any Italy winner-premium number; escalate to the ANAC check only if that number becomes load-bearing.
+- **Comparability:** for an apples-to-apples generalization claim, recompute **Cyprus** winner-premium from `digiwhistPrice` too (won't move — digi==final there — but harmonizes the method).
+
+### Next country: **codename RO (Romania)**
+Queued after Italy. Rationale and the one caveat:
+- `finalPrice` completeness is **country-by-country and unpredictable** — Cyprus 88% → Italy 0% on the *same* schema/pipeline, **uncorrelated with corruption level**. So "RO is higher-corruption → worse data" does NOT follow.
+- **Gating probe — DONE (VERIFIED 2026-10-15).** Extracted `data-ro-ndjson.zip` → **24 years (2001–2026), 9.3 GB** in `ratsniffer/data/` (gitignored). Probed RO 2015 (10,977 scanned, 10,252 awarded). **RO is in the Cyprus camp, not Italy's** — the provenance problem does NOT apply:
+  ```
+                   estimatedPrice  finalPrice(raw)  digiwhistPrice  indicators
+  RO 2015              70.2%           87.5%           99.2%          100%
+  ```
+  **Raw `finalPrice` present on 87.5%** (Italy 0%), and where both raw-final + digi exist (n=8,968), **`digi == final` 100%** — the Cyprus-style confirmation works, so RO's award price is *verified*, and winner-premium can be built from raw `final/est` with zero DIGIWHIST dependence. single-bid 68.3% (same winner-only artifact, milder than Italy's 74% / Cyprus's 81%); awarded rate ~93%.
+- **RO winner-premium (raw `final/est`, fully independent):** computable on 38.8% of awarded, **median 1.000, 71.6% ≥0.98**, 19.6% <0.90. Note the cluster at the estimate (median 1.000 vs Cyprus 0.92 / Italy 0.962) — awards hug the ceiling far more in RO: either a reporting convention (final defaults to estimate) or genuine ceiling-hugging. One year; don't over-read, but flag it for the concordance run.
+- So the earlier "RO might be worse" worry is **inverted** — for the concordance's one independent signal, RO is the **strongest** of the three countries.
+- RO's **primary** value is unchanged by any of this: **DNA's large volume of adjudicated procurement cases** = the best EU path to *real labels* (hand-linking court cases → opentender records), the one thing the project still lacks. That holds even if RO's price fields are weak.
+
+### Not done / open
+- **No Italy AUC computed** — field population only.
+- **Concordance script is still uncommitted** (never saved from the Cyprus session) — it's a from-scratch rebuild. Adaptations for Italy: use `digiwhistPrice` not `finalPrice`, restrict to 2015+, stream.
+- De-circularize (winner-premium only) still pending — and for Italy it carries a permanent asterisk: that signal *is* winner-premium, whose award-price provenance is unverifiable in-dump (see the gate finding above). A de-circularized Italy number is only as trustworthy as the `digiwhistPrice`-is-award assumption.
+
+### Romania real-labels arc — the first measured catch-rate against confirmed corruption (all VERIFIED this session)
+The session turned from "does our logic agree with experts?" to "does it catch firms a court actually sanctioned?" Three tests, ending in a **powered null**.
+
+- **Concordance (RO 2015, our flags vs opentender DIGIWHIST integrity):** AUC **0.854** full / **0.766** de-circularized (winner-premium only, vs an integrity composite with single-bid+procedure removed; RO's `advertisement/decision_period` indicators vary, so the baseline isn't degenerate). Higher than Cyprus's 0.80 → the agreement generalizes. **But concordance is agreement-with-a-heuristic, not catching a thief.**
+- **Contract-level flags on 8 image-seed sanctioned firms (365,679 RO tenders):** combined flag **1.82 vs 1.84 baseline — no lift.** First time real labels answered back; they said no.
+- **Firm-level HHI score `pre_sanction.py` (T=2012/14/16, held-out blacklist label):** AUC **0.48–0.62**, *inside* the label-shuffle band; matched-control sign-test p ≥ 0.34. **Underpowered null** (≈6 distinct firms; SIVECO triple-counted via name variants; `SANCTION_YEAR` empty so not a true pre-sanction test). Per-firm, the only firm it flagged was **Condmag** (pct 0.90–0.96) — the one whose mechanism (concentrated-buyer bid-rigging) matches HHI; **Siveco ranked clean** (its crime was cover-bidding, which HHI can't see). Mechanism-match, not noise.
+
+### The decisions, verified against press of the Council's announcements (not the decisions themselves)
+Built `data/sanctions.csv` (firm, role, mechanism, altitude, infr_start/end, market, buyer, decision_date, fined, conf). Key corrections vs the original image-seed: **Armax dropped** (2014 probe, outcome unconfirmed); **Electrica is buyer-side** (organiser facilitation, Dec 77/2017, excluded from supplier positives); **AEM participant, not fined** (leniency); **OYL is a positive** (road-maintenance market-sharing, 5 counties, decision 2026-01-14); added co-defendants Inspet/Moldocor/TMUCB/Elster/Landis+Gyr/Ecro. Mechanisms split by *altitude*: single-tender bid-rigging (Condmag, Siveco/Intrarom — test bidder-pairs, **not** HHI) vs multi-tender cartel/market-sharing (meter cartel, OYL — HHI/rotation) vs buyer facilitation (Electrica).
+
+Rigged-tender identifiers pulled (`data/rigged_tenders.csv`, from press of the Council decisions; decision PDFs 503'd):
+- **Butimanu-Brazi** gas connection / Transgaz / 2009 / **Inspet won** (Condmag cover). Fines Inspet 7.30M / Condmag 4.55M lei.
+- **Giurgiu-Ruse** 20" pipeline / Transgaz / ~2011 / **Decision 72, 14.11.2012**. TMUCB 11.38M / Moldocor 2.24M lei.
+- **APIA IT-system** framework / APIA / 2008 / **Siveco won** (Intrarom cover). Siveco 5.88M / Intrarom 2.13M lei. (Triggered by the Court of Accounts.)
+
+### `infringement_test.py` — the powered null (the real answer to "how accurate at catching it")
+Contract-level test, de-diluted by scoring only contracts **won by a sanctioned firm inside its infringement window**, vs **matched controls (same CPV-division + year, clean winner)**. One pass over 365,679 awarded RO tenders. Coverage is fine — we locate the firms' in-window contracts (Energobit 116, AEM 83, Siveco 23, Moldocor 18, …); OYL/Autoprima/Saga found 0 (infringement dates blank).
+```
+positives (sanctioned firm, in infringement window)   350
+matched controls (same CPV-div + year, clean winner)  113,972
+combined-flag mean:  positives 1.92   controls 1.93
+AUC(label vs flag) = 0.489      recall@FPR10% = 0.000
+label-shuffle x20  = 0.506 +/- 0.013   (real AUC sits inside it)
+```
+**This is a well-powered null** (350 positives, shuffle std 0.013) — unlike the firm-level run. The contract-level invariant flags (single-bid, non-open, winner-premium) **do not separate** the infringement-period contracts of these cartels from matched clean contracts. **Honest catch-rate against real confirmed-corrupt Romanian bid-rigging: ~0% (AUC 0.49, recall@10%FPR 0.00).** The failure is **discrimination, not presence** — and the flags are near-saturated in RO (single-bid 77%), so they carry little range.
+
+### The one caveat that stops this being the final verdict
+The label is still *"won by a sanctioned firm during its infringement window,"* not *"this specific contract was the rigged one."* Condmag won 7 contracts in 2009 but only **Butimanu-Brazi** was rigged; of the 350 positives, only ~a couple dozen are the actual rigged tenders, the rest legitimate work. So this proves **"no firm-in-window signal"** (a hard bound) but can't yet isolate **"blind to the specific rigged tender."** The last de-dilution — match the exact tenders in `rigged_tenders.csv` by title keyword (Butimanu-Brazi / Giurgiu-Ruse / APIA-IT) + buyer + year, giving a handful of truly-rigged contracts vs controls — is the only remaining test that could move the number. **Not yet run.**
+
+### Also this session
+- `CLAUDE.md` gained **"No labels as detector inputs (evaluation integrity)"** — no blacklists/sanction lists as features; accuracy gains must be behavior-based + held-out; recall@FPR / precision@k over accuracy; a derivative/transform adds no information. Prompted by catching a blacklist-as-feature suggestion mid-session.
+- Settled what the project's **partial derivative** actually is: `ddx`/`sensitivity` in `sandbox.html` is ∂(total true frontline delivery)/∂(node capture or audit), central-difference — computed on **hidden ground truth**, never ported to `ratsniffer/*.py`. It's a reshaping of the *label*, so it could never add held-out accuracy.
+- `data/` now carries `sanctions.csv` + `rigged_tenders.csv` (labels, trackable) alongside the gitignored `*.ndjson`.
+
+### `exact_tender_test.py` — the capstone, and a structural ceiling (VERIFIED)
+The last de-dilution: find the three *specific* rigged tenders in the RO data by title keyword + buyer + year (an inspection, not a stat test — n is 1–3 per case). Result:
+- **APIA-IT: 0 candidates.** The 2008 Siveco/Intrarom tender is **not in the opentender dump** (2007–09 RO coverage too thin / APIA not captured). Untestable.
+- **Giurgiu-Ruse: 6 hits, none the pipeline.** All Giurgiu-*county* noise (bridge/CFR/fire-safety-IT/water-analysis). The Transgaz 20″ gas pipeline tender **not found** — absent or titled differently.
+- **Butimanu-Brazi: found the semantically-exact tender** — 2010 `Racord g.n. Butimanu-Brazi ... centralei de cogenerare Brazi`, won by `INSPET + TMUCB`, `proc=NEGOTIATED_WITHOUT_PUBLICATION`, flags 2/3.
+
+**The decisive observation: `nbids=1` on every candidate across all three cases.** The crime is **cover-bidding** (colluders submit *losing* bids to fake competition), but RO opentender logs **only the winner** — so the one observable that *is* the evidence (the loser's correlated cover-bid) is **systematically absent**. On Butimanu the 2/3 is the winners-only artifact (single-bid-logged) + a genuinely odd negotiated-without-publication award — **not** detection of the rigging, which is invisible.
+
+**Capstone verdict for the whole Romania arc:** catch-rate against confirmed RO bid-rigging is **~0%, and structurally capped** — not a wrong invariant or a bad threshold, but that **cover-bidding is unobservable in winners-only procurement data**. No feature detects a cover-bid that was never logged, and 2 of 3 rigged tenders aren't even locatable. The honest unlock is **bid-level data that includes losing bids** (or the exact SEAP procedure IDs from the decision PDFs — both 503'd / absent here), not a better model. This closes the Romania real-labels line: the ceiling is the data, and we found it by chasing the crime down to the individual contract.
+
+### Postscript — the single-bid signal was an artifact the whole time (`lots[].bidsCount`)
+Chased "find bid-level data with losing bids." Public RO bid-level data effectively doesn't exist (OpenTender RO = **0 tenderers** at the registry level; SICAP bulk export broken; OCDS never published bidders below-threshold). **But** the real bid *count* was in our data all along — field **`lots[].bidsCount`** (DIGIWHIST's TED-recovered count), populated on **37.9%** of awarded RO tenders. We'd been counting the winner-only `bids` array instead. Proof it's real: **844 tenders where our `nbids==1` but `INTEGRITY_SINGLE_BID==100` (multi-bid)** — the count survived, our reading hid it.
+
+Correction this forces (RO 2015):
+```
+ARTIFACT single-bid (our nbids==1):   68.3%   <- every test this session used this
+TRUE single-bid (bidsCount==1):       44.5%   <- real, on the 37.9% that carry it
+real bid-count spread: 1:1727 2:646 3:366 4:264 5:174 6+:708
+```
+So **every session number that used single-bid (concordance, `infringement_test`, blacklist cross-check) ran on an inflated artifact** — not comparable to a rerun on real `bidsCount`.
+
+**What it unlocks vs doesn't — two different mechanisms:**
+- **Unlocks:** genuine single-bidding (sole-source / no-competition typology) on the ~38% subset. Cheap, real upgrade; de-artifacts the concordance.
+- **Does NOT touch cover-bidding** (the actual RO cartel cases), for two reasons: (1) `bidsCount` is a *count, not identities* — loser names still absent (`INTEGRITY_MULTIPLE_VALID_BIDS` = 100% INSUFFICIENT_DATA); (2) **cover-bidding tenders are multi-bid by design** — Butimanu (Condmag+Inspet) and APIA (Siveco+Intrarom) would read `bidsCount≥2`, i.e. "competitive," so even the true count correctly stays silent. Count obtainable, identities not; the capstone ceiling stands.
+
+**Rewired and re-ran (single-bid → `bidsCount`; `concordance.py` + `infringement_test.py`):**
+```
+                       pre-rewire(artifact)   rewired(bidsCount)
+single-bid flag rate         0.683                0.168
+FULL concordance AUC         0.854                0.728
+DE-CIRC (winner-prem only)   0.766                0.766
+infringement AUC             0.489                0.521
+infringement recall@FPR10%   0.000                0.034
+infringement label-shuffle     --            0.504 +/- 0.013
+```
+The rewire made the numbers **honest, not better**. FULL concordance deflated (0.854→0.728) as the inflated single-bid fell away; the **independent DE-CIRC held exactly at 0.766** — now the real headline. The infringement test moved from just-below to just-above chance (0.489→0.521, recall 0→3.4%) but **0.521 vs shuffle 0.504±0.013 is within noise — still a null.** And it **confirms the ceiling rather than lifting it, for the predicted reason**: a *correct* single-bid flag fires on genuine single-bidding, but cover-bidding reads `bidsCount≥2` by design, so the flag correctly stays silent on the actual cartel contracts. De-artifacting couldn't help because single-bid was never the right signal for cover-bidding.
+
+**Honest final state of the Romania arc:** independent concordance with experts **AUC 0.766** (de-artifacted, stable); catch-rate against confirmed bid-rigging **≈ chance** (AUC 0.52, recall@10%FPR 3.4%), and structurally so — the crime is cover-bidding, and the data has neither the loser identities nor a single-bid tell for it. Files added this session: `concordance.py`, `infringement_test.py`, `exact_tender_test.py`, `pre_sanction.py`, `data/sanctions.csv`, `data/rigged_tenders.csv`.

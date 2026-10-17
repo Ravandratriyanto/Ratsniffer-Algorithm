@@ -11,3 +11,12 @@ __pycache__/
 # Journal output + local venv
 journal.jsonl
 .venv/
+
+# Opentender data (CC BY-NC-SA 4.0, non-commercial - must NOT ship in this Apache repo)
+ratsniffer/data/*.ndjson
+ratsniffer/data/*.jsonl
+ratsniffer/data/*opentender*
+ratsniffer/data/cyprus*
+
+# Opentender raw download (NC-licensed, keep out of repo)
+/*.zip

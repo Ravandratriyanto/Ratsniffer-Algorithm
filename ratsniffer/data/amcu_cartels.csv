@@ -1,0 +1,20 @@
+cartel,firm_en,firm_uk,edrpou,market,buyer,fine_uah,decision_date,tender_year,conf
+kyiv_waste,Kyivkomunservice,Київкомунсервіс,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Altfater Kyiv,Альтфатер Київ,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Volodar-Roz,Володар-Роз,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Kyivspetstrans,Київспецтранс,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Kramar Recycling,Крамар Рісайлінг,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Kramar ECO,Крамар Еко,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Celtic,Селтік,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Spetskommuntechnika,Спецкомунтехніка,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+kyiv_waste,Profpererobka,Профпереробка,,waste collection,Kyiv City State Administration,313300000,2026-07-31,2021,high
+barite_ukrgaz,Nova Interprise,Нова Інтерпрайз,,barite concentrate,Ukrgazvydobuvannya,25949909,,,high
+barite_ukrgaz,Trade Pipe Company,Торгова трубна компанія,,barite concentrate,Ukrgazvydobuvannya,25949909,,,high
+electricity,De Trading,Де Трейдинг,42699760,electricity,,50000000,2026-09-08,,high
+electricity,Torgova Elektrichna Kompaniya,Торгова електрична компанія,36530971,electricity,,60000000,2026-09-08,,high
+mykolaiv_construction,Hospodar-2,Господар-2,,construction,,3074937,2025-10-02,,med
+mykolaiv_construction,Demsey PE,Демсі,,construction,,3074937,2025-10-02,,med
+medical_infra,Pharmedis,Фармедіс,,medical materials,State Agency for Infrastructure Projects of Ukraine,16110602,2025-10-02,,high
+medical_infra,DM-Project,ДМ-Проект,,medical materials,State Agency for Infrastructure Projects of Ukraine,16110602,2025-10-02,,high
+pivdennoukrainsk_school,Gospodar-2,Господар-2,,construction,Pivdennoukrainsk City Council,136000,2026-10-07,2024,med
+pivdennoukrainsk_school,First Ukrainian Construction,Перша українська будівельна,,construction,Pivdennoukrainsk City Council,136000,2026-10-07,2024,med
