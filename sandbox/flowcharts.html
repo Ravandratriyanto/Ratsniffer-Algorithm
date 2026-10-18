@@ -441,11 +441,27 @@
 
   <a class="card a" id="c-proc" href="#c-proc">
     <h3>⑥ A second domain — procurement integrity</h3>
-    <div class="files">procurement.py</div>
-    <p>The first real data (World Bank debarred firms) showed that <strong>what the World Bank sanctions is mostly procurement misconduct</strong> — not budget-flow retention, but <strong>how contracts are won</strong>: bidding fraud, collusion, shell networks. (That's <em>enforcement</em> data — what gets caught and published — not a measure of what corruption actually is.) So a second domain alongside leakage: tenders with bids, not money down a tree.</p>
-    <p><strong>The red flags a rigged tender leaves:</strong> one lonely bid; losing bids clustered too tightly (collusion) or the winner priced just under the estimate; the same firms taking turns; bidders sharing an address or owner (a shell network — graph-shaped, where a GNN would fit).</p>
-    \[ \text{bid spread } \mathrm{CV} = \sigma_b / \mu_b \ \text{too low}, \qquad \frac{\text{winning bid}}{\text{estimate}} \to 1 \]
-    <p><strong>Status, honestly:</strong> scaffolded and wired to the same honesty harness (held-out by buyer, recall@budget, label-shuffle) — which <em>immediately flagged the generator as too easy</em> (one feature separates perfectly), so there is no real recall number here yet. The win is that the discipline transferred to a new domain and caught the easiness on contact. The leakage domain's retention signal is <em>expected</em> to score near chance here — a hypothesis, not yet measured — different crime, different features.</p>
+    <div class="files">procurement.py · cartel_eval.py · prozorro_window.py · data/amcu_cartels.csv</div>
+    <p>The first real data (World Bank debarred firms) showed that <strong>what the World Bank sanctions is mostly procurement misconduct</strong> — not budget-flow retention, but <strong>how contracts are won</strong>: bidding fraud, collusion, shell networks. So a second domain alongside leakage: tenders with bids, not money down a tree.</p>
+    <p><strong>The red flags a rigged tender leaves:</strong></p>
+    \[ \mathrm{CV} = \frac{\sigma_b}{\mu_b},\quad \mathrm{RD} = \frac{b_2 - b_1}{\sigma_{b_{2+}}},\quad \frac{b_1}{\hat{v}} \to 1,\quad \frac{b_2}{b_1} \text{ (cover-bid gap)} \]
+    <p>Features: <code>single_bid</code>, <code>bid_cv</code>, <code>winner_premium</code>, <code>n_bidders</code>, <code>rel_distance</code>, <code>bid_skew</code>, <code>bid_kurt</code>, <code>bid_ratio</code>, <code>loser_cv</code>. IsolationForest fit on clean tenders only. <code>loser_cv = σ(b₂…)/μ(b₂…)</code> — CV of non-winner bids only; cover-bid losers cluster tightly → low loser_cv.</p>
+    \[ \mathrm{loser\_cv} = \frac{\sigma(b_{2+})}{\mu(b_{2+})} \]
+    <p><strong>Real-world validation — Romania (opentender):</strong> concordance with DIGIWHIST experts <strong>AUC 0.766</strong> (de-circularized, independent signal). Catch-rate against confirmed AMCU-sanctioned bid-rigging: <strong>AUC 0.52, recall@FPR10% = 3.4% — effectively a null.</strong> Root cause: Romanian cartels used <em>cover-bidding</em> — fake losing bids. Opentender logs only the winner; the cover bid was never recorded. No feature detects a bid that isn't there. <em>Structural ceiling, not a modeling failure.</em></p>
+    <p><strong>Ukraine ProZorro — first data with losing bids:</strong> ProZorro publishes all bidders including losers. Built a feed puller (<code>prozorro_window.py</code>) and AMCU cartel labels (<code>amcu_cartels.csv</code>: 6 cartels, 19 firms). Cover-bidder pattern confirmed: De Trading (EDRPOU 42699760) bid 110 lots, won 0 — always losing to ТОВ "ТЕК" (Торгова електрична компанія, EDRPOU 36530971). AMCU fined both firms 110M UAH total.</p>
+    <p><strong>Measured on real cartel data (28,277 lots, 4 cartels, 39 labeled):</strong></p>
+    <pre style="font-size:11px;margin:6px 0">bid_cv        AUC 0.607
+bid_ratio     AUC 0.566
+loser_cv      AUC 0.545   (new — CV of non-winner bids)
+rel_distance  AUC 0.538
+IsolationForest (clean-only): AUC 0.584  recall@FPR10% 0.231
+iso shuffle band: 0.522 ± 0.057
+
+LOCO (leave-one-cartel-out):
+  electricity  n=4   AUC 0.167  ← cross-sector sign flip
+  kyiv_waste   n=33  AUC 0.490  ← dilution ceiling</pre>
+    <p><strong>Generator hardened:</strong> cover-bid loser spread widened to U(1%, 8%) above winner; winner floor lowered to 0.85×estimate; 15% of clean tenders now naturally cluster (competitive markets). <code>winner_premium</code> single-feature AUC: 1.000 → 0.959 — no longer a perfect separator.</p>
+    <p><strong>Limitations:</strong> (1) <em>label dilution</em> — firm-level labels tag every tender a cartel firm bid on, not just rigged ones; near-chance LOCO is the expected ceiling; (2) <em>cross-sector sign flip</em> — electricity LOCO AUC 0.167 (worse than random) because model trained on waste-sector kyiv_waste features invert in energy sector; (3) <em>scan still running</em> — 28k lots from 2019 Jan–Mar only, electricity window just opening; (4) HHI and firm-level win-rate features not yet wired in — pending more scan coverage.</p>
   </a>
 
 </div>
@@ -516,7 +532,8 @@
   (shuffle, world-split, hold-out families), <code>coverage.py</code> maps which layer catches which crime,
   and <code>report.py</code> lays out the per-office verdict with the model's reasoning →
   the <code>cheating bot</code> invents harder worlds — now <em>disguised</em>, not loud — and
-  <code>procurement.py</code> opens a second domain (rigged bids, not budget leakage).
+  <code>procurement.py</code> + <code>cartel_eval.py</code> open a second domain (rigged bids, not budget leakage),
+  validated against real AMCU cartel labels from Ukraine ProZorro.
   Open with <code>xdg-open flowcharts.html</code> (the math font loads from a CDN the first time; your browser then caches it, so it renders offline after — no network needed once cached).
 </footer>
 </body>

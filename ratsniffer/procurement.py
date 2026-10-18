@@ -4,50 +4,28 @@ from sklearn.metrics import roc_auc_score
 from eval import fit_score, recall_at_fpr, split_by_world, ms 
 
 
-PROC_FEATURES = ["single_bid", "bid_cv", "winner_premium", "n_bidders","rel_distance", "bid_skew", "bid_kurt"]
-def procurement_world(rng, n_tenders=25, p_rig=0.25):
-    tenders = []
-    for _ in range(n_tenders):
-        est = rng.choice([1e8, 5e8, 1e9]) * rng.uniform(0.5, 1.5)
-        rigged = rng.random() < p_rig
-        if not rigged: 
-            k = rng.random() < p_rig 
-            bids = [est * rng.uniform(0.6, 0.98)for _ in range(k)]
-        elif rng.random() < 0.4:
-            k = 1
-            bids = [est * rng.uniform(0.6, 0.98) for _ in range(k)]
-        elif rng.random() < 0.4:
-            k = rng.randint(3, 5)
-            win = est * rng.uniform(0.93, 0.99)
-            bids = [win] + [win * rng.uniform(1.0, 1.03) for _ in range(k - 1)]
-        tenders.append({"bids": bids, "estimate": est, "label": "corrupt" if rigged else "clean"})
-    return tenders
+PROC_FEATURES = ["single_bid", "bid_cv", "winner_premium", "n_bidders", "rel_distance", "bid_skew", "bid_kurt", "bid_ratio", "loser_cv"]
 
 def tender_features(t):
     b = np.sort(np.asarray(t["bids"], float))
     k = len(b)
     mu, sd = (b.mean(), b.std()) if k else (0.0, 0.0)
-    cv = sd/mu if mu and k > 1 else 0.0 
+    cv = sd / mu if mu and k > 1 else 0.0
     if k >= 3:
-        losers = b[:1]
+        losers = b[1:]
         sl = losers.std()
         rd = (b[1] - b[0]) / sl if sl > 0 else 0.0
         z = (b - mu) / sd if sd > 0 else b * 0.0
         skew = float((z ** 3).mean())
         kurt = float((z ** 4).mean() - 3.0)
+        loser_cv = losers.std() / losers.mean() if len(losers) >= 2 and losers.mean() > 0 else 0.0
     else:
-        rd = skew = kurt = 0.0
+        rd = skew = kurt = loser_cv = 0.0
     single = 1.0 if k == 1 else 0.0
     wp = b[0] / t["estimate"] if t["estimate"] else 0.0
-    return [single, cv, wp, float(k), rd, skew, kurt]
+    bid_ratio = b[1] / b[0] if k >= 2 and b[0] > 0 else 1.0
+    return [single, cv, wp, float(k), rd, skew, kurt, bid_ratio, loser_cv]
      
-def dataset(n_worlds, seed):
-    rng = random.Random(seed)
-    X, y, w = [], [], []
-    for wid in range(n_worlds):
-        for t in procurement_world(rng):
-            X.append(tender_features(t)); y.append(1 if t["label"] == "corrupt" else 0); w.append(wid)
-    return np.array(X, float), np.array(y), np.array(w)
 def procurement_world(rng, n_tenders=25, p_rig=0.25):
     tenders = []
     for _ in range(n_tenders):
@@ -55,16 +33,30 @@ def procurement_world(rng, n_tenders=25, p_rig=0.25):
         rigged = rng.random() < p_rig
         if not rigged:
             k = rng.randint(3, 6)
-            bids = [est * rng.uniform(0.6, 0.98) for _ in range(k)]
+            if rng.random() < 0.15:
+                mu_b = est * rng.uniform(0.88, 0.99)
+                bids = [mu_b * rng.uniform(0.97, 1.03) for _ in range(k)]
+            else:
+                bids = [est * rng.uniform(0.6, 0.98) for _ in range(k)]
         elif rng.random() < 0.4:
             k = 1
             bids = [est * rng.uniform(0.95, 1.0)]
         else:
             k = rng.randint(3, 5)
-            win = est * rng.uniform(0.93, 0.99)
-            bids = [win] + [win * rng.uniform(1.0, 1.03) for _ in range(k - 1)]
+            win = est * rng.uniform(0.85, 0.99)
+            spread = rng.uniform(0.01, 0.08)
+            bids = [win] + [win * rng.uniform(1.002, 1.0 + spread) for _ in range(k - 1)]
         tenders.append({"bids": bids, "estimate": est, "label": "corrupt" if rigged else "clean"})
     return tenders
+
+def dataset(n_worlds, seed):
+    rng = random.Random(seed)
+    X, y, w = [], [], []
+    for wid in range(n_worlds):
+        for t in procurement_world(rng):
+            X.append(tender_features(t)); y.append(1 if t["label"] == "corrupt" else 0); w.append(wid)
+    return np.array(X, float), np.array(y), np.array(w)
+
 def main():
     X, y, w = dataset(30, seed=0)
     print(f"procurement: {len(y)} tenders, {int(y.sum())} rigged ({y.mean():.1%}), {len(set(w.tolist()))} buyers\n")

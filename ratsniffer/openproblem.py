@@ -59,14 +59,9 @@ def regroup(X, fn):
     for g in np.unique(fn):
         idx = np.where(fn == g)[0]; X2[idx, HR] = ranks01(X[idx, 0])
     return X2
-
 def tf_zdev(X, fn):
     X2 = X.copy()
-    for g in np.unique(fn):
-        idx = np.where(fn == g)[0]; h = X[idx, 0]
-        med = np.median(h); mad = np.median(np.abs(h - med)) * 1.4826 + 1e-6
-        X2[idx, HR] = np.clip((h - med) / mad, -8, 8)
-    return X2
+    idx = 
 
 def train_pool(n, seed):
     rng = random.Random(seed); ms = []
@@ -79,30 +74,30 @@ Xho, yho, fnho = build([realistic_honest(random.Random(100 + i), 0.0) for i in r
 Xtr = np.vstack([Xs, Xho]); ytr = np.concatenate([ys, np.zeros(len(Xho))]); fntr = np.concatenate([fns, fnho])
 Xbr, ybr, fnbr = build(breed(seed_bank(), random.Random(7), n=40))
 
-def variant(tf):
-    Xt = tf(Xtr, fntr) if tf else Xtr
+def variant(regr):
+    Xt = regroup(Xtr, fntr) if regr else Xtr
     Xc, _, fnc = build([realistic_honest(random.Random(500 + i), 0.0) for i in range(20)])
-    if tf: Xc = tf(Xc, fnc)
+    if regr: Xc = regroup(Xc, fnc)
     tau = float(np.quantile(fit_score(Xt, ytr, Xc), 0.90))
     curve = []
     for ph in (0.0, 0.1, 0.2, 0.3, 0.5):
         Xh, _, fh = build([realistic_honest(random.Random(600 + int(ph * 100) + i), ph) for i in range(20)])
-        if tf: Xh = tf(Xh, fh)
+        if regr: Xh = regroup(Xh, fh)
         curve.append((ph, (fit_score(Xt, ytr, Xh) >= tau).mean()))
-    Xb = tf(Xbr, fnbr) if tf else Xbr
+    Xb = regroup(Xbr, fnbr) if regr else Xbr
     sb = fit_score(Xt, ytr, Xb)
     return tau, curve, (sb[ybr == 1] >= tau).mean(), sb
 
-print("=== Exp 1+2+fix: honest FPR vs holding share — global rank / function rank / expected-hold z ===")
-for label, tf in [("global  rank   ", None), ("function rank  ", regroup), ("expected-hold z", tf_zdev)]:
-    tau, curve, br, sb = variant(tf)
+print("=== Exp 1+2: honest FPR vs holding share, global vs function-grouped hold_rank ===")
+for label, regr in [("global  hold_rank", False), ("function hold_rank", True)]:
+    tau, curve, br, sb = variant(regr)
     print(f"\n[{label}]  bred recall@(10%-honest-FPR) = {br:.2f}")
     print("   " + "  ".join(f"p_hold={ph:.1f}:{fpr:5.1%}" for ph, fpr in curve))
 
-print("\n=== Exp 3: oracle with a budget — ML ranks, oracle confirms (expected-hold z variant) ===")
-tau, curve, br, sb = variant(tf_zdev)
+print("\n=== Exp 3: oracle with a budget (function variant) — ML ranks, oracle confirms ===")
+tau, curve, br, sb = variant(True)
 Xh, yh, fh = build([realistic_honest(random.Random(700 + i), 0.3) for i in range(20)])
-sh = fit_score(tf_zdev(Xtr, fntr), ytr, tf_zdev(Xh, fh))
+sh = fit_score(regroup(Xtr, fntr), ytr, regroup(Xh, fh))
 scores = np.concatenate([sb, sh]); labels = np.concatenate([ybr, yh])
 order = np.argsort(-scores)
 print(f"   mixed pool: {len(labels)} offices, {int(labels.sum())} corrupt ({labels.mean():.1%})")

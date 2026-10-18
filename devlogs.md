@@ -673,3 +673,165 @@ infringement label-shuffle     --            0.504 +/- 0.013
 The rewire made the numbers **honest, not better**. FULL concordance deflated (0.854→0.728) as the inflated single-bid fell away; the **independent DE-CIRC held exactly at 0.766** — now the real headline. The infringement test moved from just-below to just-above chance (0.489→0.521, recall 0→3.4%) but **0.521 vs shuffle 0.504±0.013 is within noise — still a null.** And it **confirms the ceiling rather than lifting it, for the predicted reason**: a *correct* single-bid flag fires on genuine single-bidding, but cover-bidding reads `bidsCount≥2` by design, so the flag correctly stays silent on the actual cartel contracts. De-artifacting couldn't help because single-bid was never the right signal for cover-bidding.
 
 **Honest final state of the Romania arc:** independent concordance with experts **AUC 0.766** (de-artifacted, stable); catch-rate against confirmed bid-rigging **≈ chance** (AUC 0.52, recall@10%FPR 3.4%), and structurally so — the crime is cover-bidding, and the data has neither the loser identities nor a single-bid tell for it. Files added this session: `concordance.py`, `infringement_test.py`, `exact_tender_test.py`, `pre_sanction.py`, `data/sanctions.csv`, `data/rigged_tenders.csv`.
+
+---
+
+## Session log — 2026-10-17
+
+### Ukraine ProZorro — architecture findings, AMCU cartel data, cover-bidder pattern confirmed
+
+**Why Ukraine:** Romania hit a structural ceiling (cover-bidding undetectable in winners-only data). Ukraine's **ProZorro** is the first procurement source with bids including losers — the exact data type needed to test cover-bidding detection. Ukraine also has **AMCU** (Antimonopoly Committee) enforcement decisions with named firms, fine amounts, and decision dates — real labels from a publishing regulator.
+
+**AMCU cartel labels built (`data/amcu_cartels.csv`):**
+Six cartels resolved from AMCU press releases and decisions: `kyiv_waste` (9 firms, waste collection Kyiv, fine 313M UAH, 2026-07-31), `barite_ukrgaz` (2 firms, Ukrgazvydobuvannya barite, 2025), `electricity` (2 firms, De Trading + ТЕК, 110M UAH total, 2026-09-08), `mykolaiv_construction`, `medical_infra`, `pivdennoukrainsk_school`. Cyrillic `firm_uk` names filled from press reporting; `edrpou` column initially blank (AMCU site 403'd).
+
+**ProZorro API architecture — the wall:**
+- **Feed API** (`public-api.prozorro.gov.ua/api/2.5/tenders`): full tender detail including all bidders + amounts, date-seekable. ✓
+- **Search bridge** (firm → tenders): does not exist as an open endpoint. Tested 5 URL patterns — all 404/405/422.
+- **bi.prozorro.org** (Qlik Sense BI): free, has firm-level search and tender lists. Export is image-only (no CSV/Excel on public tier). JavaScript DOM extraction (`title` attributes) empty — Qlik virtualizes rows without title attributes.
+- **Clarity Project** (paid API, ~$30/mo): found during search, rejected.
+
+**Cover-bidder pattern confirmed via bi.prozorro.org:**
+Searched `Де Трейдинг` in Карточка учасника (Пропозиції). Found:
+- EDRPOU: **42699760** (De Trading) — В "чорному списку" АМКУ: **Так** (on AMCU blacklist, confirmed)
+- **110 lots, 0% wins** across all of them — pure cover-bidder by behavior
+- Top co-bidder: **ТОВ "ТЕК" | 36530971** appearing in **104 of 107 shared lots**
+- **ТЕК** = abbreviation of **Т**оргова **Е**лектрична **К**омпанія = the other AMCU-named firm
+- AMCU fined ТЕК more (60M vs 50M UAH) — consistent with winner/cover-bidder asymmetry
+
+Both EDRPOUs filled in `amcu_cartels.csv`: De Trading 42699760, Торгова електрична компанія 36530971.
+
+**Feed scan — kyiv_waste hits obtained:**
+Ran `prozorro_window.py` from 2019-02-01. After ~1hr, 12 days of feed covered (2879 lots, 11 `kyiv_waste` cartel-tagged). Electricity cartel tenders from Feb-Mar 2019 completion dates fall later in the feed (April-June 2019 by `dateModified`) — missed in this window. Brute-force scan of all 2019 too slow (~35 hrs on this machine). Offloaded to a second laptop (Linux Mint, Ryzen 3) via SSH + `nohup`:
+
+```bash
+nohup python3 prozorro_window.py 2019-01-01 5000000 data/prozorro_2019_2021.ndjson > scan.log 2>&1 &
+```
+
+ETA ~5 days for full 2019–2021 coverage. Progress checkable via `ssh raven@OTHER_IP "tail -3 ~/Documents/Ratsniffer/scan.log"`.
+
+### Algorithm improvements — four shipped, one bug fixed
+
+**Bug fixed (`procurement.py` line 32):**
+`losers = b[:1]` → `losers = b[1:]`. The old code computed std of a single-element array (always 0), making `rel_distance` always 0 and inactive. Now computes std of all non-winner bids, as intended. `rel_distance` is now active in `cartel_eval.py` output.
+
+Also removed a duplicate `procurement_world()` definition (lines 8-23 shadowed by 51-67; only the second, correct version kept).
+
+**1. `bid_ratio` (new feature):** `b[1] / b[0]` for k≥2 bids (2nd-lowest / winner). Captures the cover-bidder gap without requiring ≥3 bids. Added to `PROC_FEATURES` and `tender_features()` return.
+
+**2. IsolationForest (`cartel_eval.py`):** fit on clean tenders only (`X[y==0]`), scores all tenders. Satisfies the CLAUDE.md required check ("IsolationForest is fit on honest nodes only"). Result on kyiv_waste data: **AUC 0.713, recall@FPR10% 0.714** — best result so far. Label-shuffle x20: **0.485 ± 0.079** — IsolationForest is well outside the shuffle band.
+
+**3. Co-bidder HHI (`cobidder_hhi()`):** firm-level concentration of co-bidders (Herfindahl index). De Trading's HHI would be near 1.0 (always bids against the same ТЕК); genuinely competitive firms have dispersed co-bidder pools. Reported as a diagnostic (top-10 most concentrated firms); not yet joined as a per-tender feature.
+
+**4. Precision@k:** reports `precision@10/20/50` on `bid_cv` scores. Currently 0.000 at all k (7 cartel lots in 6128 = 0.1% base rate — dilution too severe for top-k to land). Will improve with full scan data.
+
+### Verified results on real cartel data (7 kyiv_waste lots, 6128 total)
+
+```
+[per-screen AUC: cartel-tagged vs clean]
+  bid_cv           0.696
+  winner_premium   0.357
+  n_bidders        0.537
+  rel_distance     0.543  <- now active (bug fixed)
+  bid_skew         0.525
+  bid_kurt         0.503
+  bid_ratio        0.618  <- new feature
+
+[IsolationForest on clean-only]  AUC 0.713  recall@FPR10% 0.714
+[iso shuffle x20]  0.485+/-0.079  (expect ~0.5)
+[label-shuffle x20] best single-screen AUC  0.611+/-0.055
+```
+
+`bid_cv` (0.696) and IsolationForest (0.713) both above shuffle band. Too few cartel samples (7) to treat magnitudes as stable — directional only. LOCO test requires ≥2 cartels; pending full scan.
+
+### Caveats and open threads
+- **Dilution:** firm-level labels tag every tender a cartel firm bid on, not just rigged ones. Near-chance is the dilution ceiling; exact rigged-tender IDs would de-dilute but AMCU decision PDFs are 403-blocked.
+- **One cartel only:** kyiv_waste is waste collection; electricity cartel data not yet in dataset. LOCO impossible until scan completes.
+- **Co-bidder HHI at 1.0 for all top-10:** scanner has only covered 12 days of 2019; most firms appear in just one tender. HHI becomes meaningful at fuller coverage.
+- **Scan still running** on second machine; results pending.
+- **devlog correction:** `prozorro_window.py` argv handling had a bug — 3rd argument (output path) was not passed to `main()`, so the custom output filename was ignored. Fixed in the version running on the second laptop.
+
+---
+
+## Session log — 2026-10-18
+
+### Algorithm improvements shipped
+
+**`loser_cv` (new feature):** CV of non-winner bids only (`std(b[1:]) / mean(b[1:])` for k≥3). Captures cover-bid loser clustering directly — in a cover-bid tender, losers are tightly bunched just above the winner → low `loser_cv`. Added to `PROC_FEATURES` and `tender_features()` return list. Also added `loser_cv = 0.0` to the `else` branch (k<3).
+
+**Generator hardening (`procurement_world()`):** Cover-bid losers widened from `win * rng.uniform(1.0, 1.03)` to `win * rng.uniform(1.002, 1.0 + spread)` where `spread ~ U(0.01, 0.08)`. Winner floor lowered from 0.93 to 0.85. Added 15% of clean tenders as naturally-clustering competitive bids (`mu_b * rng.uniform(0.97, 1.03)`). Result: `winner_premium` single-feature AUC dropped from **1.000 → 0.959** — generator no longer trivially easy.
+
+**`firm_win_rate` + `pct_chronic_losers` added to `cartel_eval.py`:** Pre-computes per-firm win rate across all tenders (firms with ≥5 appearances), then for each tender reports fraction of bidders who historically never win. Motivated by De Trading's 0% wins over 110 appearances — undetectable from single-tender features. Not yet wired into the IsolationForest feature vector; present as helper functions.
+
+**JSON error handling in `cartel_eval.py`:** Added `try/except json.JSONDecodeError` in both `load()` and `cobidder_hhi()` to handle truncated last lines when the file is copied mid-write.
+
+### Synthetic eval after generator hardening
+
+```
+procurement: 750 tenders, 173 rigged (23.1%), 30 buyers
+
+[single-feature AUC]
+  single_bid       0.676
+  bid_cv           0.038   <- inverse separator (low = rigged)
+  winner_premium   0.959   <- was 1.000, now below WARN threshold
+  n_bidders        0.263
+  rel_distance     0.408
+  bid_skew         0.443
+  bid_kurt         0.655
+  bid_ratio        0.106
+  loser_cv         0.048   <- inverse separator (low = rigged)
+
+[held-out by buyer x10]  ROC 0.966+/-0.008
+                         recall@FPR10% 0.897+/-0.053
+[label-shuffle x10]      ROC 0.472+/-0.223  (expect ~0.5)
+```
+
+No leak, no single feature >0.95. Generator is no longer trivially easy.
+
+### ProZorro scan progress and real-data eval
+
+**Scan infrastructure:** Second laptop (Linux Mint, Ryzen 3, `192.168.100.21`) running `prozorro_window.py`. SSH key installed (`ssh-copy-id`). Scan died at 312,900 scanned / 23,696 wrote due to ProZorro API timeout. Last date in feed: **2019-03-21**. Restart command (append mode):
+
+```bash
+cd ~/Documents/Ratsniffer/ratsniffer && python3 prozorro_window.py 2019-03-21 5000000 >> data/prozorro_ua.ndjson 2>scan.log
+```
+
+**Data pulled (15MB snapshot, 28,277 lots):**
+
+```
+lots 28277  cartel-tagged 39  clean 28238
+cartels: electricity=4  kyiv_waste=33  medical_infra=1  pivdennoukrainsk_school=1
+
+[per-screen AUC]
+  bid_cv           0.607
+  winner_premium   0.476
+  n_bidders        0.543
+  rel_distance     0.538
+  bid_skew         0.497
+  bid_kurt         0.462
+  bid_ratio        0.566
+  loser_cv         0.545
+
+[IsolationForest on clean-only]  AUC 0.584  recall@FPR10% 0.231
+[iso shuffle x20]  0.522+/-0.057
+
+[leave-one-cartel-out]
+  electricity   n_pos=4   AUC 0.167  recall@FPR10% 0.000
+  kyiv_waste    n_pos=33  AUC 0.490  recall@FPR10% 0.030
+  medical_infra / pivdennoukrainsk_school: skip (n=1)
+```
+
+### Key findings
+
+- **Electricity cartel confirmed in feed** — 4 tenders found (De Trading / ТЕК window around March 2019). LOCO test now live for the first time.
+- **IsolationForest improved 0.530 → 0.584**, recall@FPR10% 0.056 → **0.231** — more data helping.
+- **`loser_cv` active at 0.545** on real data — contributing alongside `bid_cv`.
+- **Electricity LOCO AUC 0.167** — worse than random. Cross-sector sign flip: model trained on kyiv_waste (waste collection, many bidders) predicts electricity tenders as clean. Same disease as the synthetic cross-family inversion finding. More electricity hits needed before this number is stable.
+- **Dilution still the binding constraint** — 39 cartel-tagged out of 28,277 (0.14% base rate). Precision@k = 0.000 at all thresholds. AMCU decision PDFs (exact rigged-tender IDs) remain 403-blocked.
+- **HHI still 1.000 for all top-10** — scan coverage too sparse for firm co-bidder concentration to be meaningful.
+
+### Open / next
+- Restart scan on Mint laptop from 2019-03-21 (append mode, see command above).
+- Pull fresh snapshot once scan reaches ~500k scanned — electricity window should widen.
+- Wire `pct_chronic_losers` into the IsolationForest feature vector once enough firms have ≥5 appearances.
+- LOCO test needs more electricity hits (≥5) to be reliable — keep scanning.

@@ -9,7 +9,8 @@
 
 **New here? Open [`sandbox/flowcharts.html`](sandbox/flowcharts.html) in a browser.** It is a
 visual map of the whole system (every file, how the money flows, the math in plain English),
-plus a step-by-step flowchart of how one office gets flagged or cleared, and the honest coverage
+plus a step-by-step flowchart of how one
+ office gets flagged or cleared, and the honest coverage
 numbers. It is the fastest way to understand the project.
 
 Ratsniffer is a **concept**: rule out clean spending, surface the corrupt. The core bet is that
